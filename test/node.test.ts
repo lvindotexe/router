@@ -27,16 +27,22 @@ Deno.test("Root Node is not defined", async (t) => {
   });
 });
 
-//TODO handle wildcards
-// Deno.test("Get with *", (t) => {
-//   const node = new Node();
-//   node.add("GET", "*", "get all");
+Deno.test("All", async (t) => {
+  const node = new Node();
+  node.add("ALL", "/all-methods", "all methods"); // ALL
 
-//   t.step("get /", () => {
-//     assertStrictEquals(node.find("GET", "/")![0].length, 1);
-//     assertStrictEquals(node.find("GET", "/hello")![0].length, 1);
-//   });
-// });
+  await t.step("/all-methods with GET", () => {
+    const [res] = node.find("GET", "/all-methods")!;
+    assertExists(res);
+    assertEquals(res, "all methods");
+  });
+
+  await t.step("/all-methods with PUT", () => {
+    const [res] = node.find("PUT", "/all-methods")!;
+    assertExists(res);
+    assertEquals(res, "all methods");
+  });
+});
 
 Deno.test("Basic Usage", async (t) => {
   const node = new Node();
@@ -65,5 +71,62 @@ Deno.test("Basic Usage", async (t) => {
 
   await t.step("/hello/foo/bar", () => {
     assertStrictEquals(node.find("GET", "/hello/foo/bar"), undefined);
+  });
+});
+
+Deno.test("Wildcard", async (t) => {
+  const node = new Node();
+
+  node.add("GET", "/wildcard-abc/*/wildcard-efg", "wildcard");
+  node.add("GET", "/wildcard-abc/*/wildcard-efg/hijk", "wildcard");
+
+  await t.step("/wildcard-abc/xxxxxx/wildcard-efg", () => {
+    const [res] = node.find("GET", "/wildcard-abc/xxxxxx/wildcard-efg")!;
+    assertExists(res);
+    assertEquals(res, "wildcard");
+  });
+
+  await t.step("/wildcard-abc/xxxxxx/wildcard-efg/hijk", () => {
+    const [res] = node.find("GET", "/wildcard-abc/xxxxxx/wildcard-efg/hijk")!;
+    assertExists(res);
+    assertEquals(res[0], "wildcard");
+  });
+
+  await t.step("Special Wildcard", async (t) => {
+    const node = new Node();
+    node.add("ALL", "*", "match all");
+
+    await t.step("/foo", () => {
+      const [res] = node.find("GET", "/foo")!;
+      assertExists(res);
+      assertEquals(res, "match all");
+    });
+
+    await t.step("/hello", () => {
+      const [res] = node.find("GET", "/hello")!;
+      assertExists(res);
+      assertEquals(res, "match all");
+    });
+
+    await t.step("/hello/foo", () => {
+      const [res] = node.find("GET", "/hello/foo")!;
+      assertExists(res);
+      assertEquals(res, "match all");
+    });
+  });
+
+  await t.step("wildcard as middleware", async () => {
+    const node = new Node();
+    node.add("ALL", "*", "middleware 1");
+    node.add("ALL", "*", "middleware 2");
+    node.add("GET", "/hello", "response");
+
+    const [middleware1, middleware2, res] = await node.find("GET", "/hello")!;
+    assertExists(middleware1);
+    assertExists(middleware2);
+    assertExists(res);
+    assertEquals(middleware1, "middleware 1");
+    assertEquals(middleware2, "middleware 2");
+    assertEquals(res, "response");
   });
 });
