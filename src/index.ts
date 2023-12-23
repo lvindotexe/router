@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 type METHOD = "GET" | "POST" | "PUT" | "DELETE" | "PUT";
 type METHOD_ALL = "ALL";
-type Handler<
+export type Handler<
   Decorators extends Record<string, unknown> = Record<string, unknown>,
   Context extends Record<string, unknown> = any
 > = Context & { decorators: Decorators };
@@ -43,15 +43,24 @@ export class Node {
     return node;
   }
 
-  find(method: METHOD | METHOD_ALL, path: string) {
+  private getMethods(node: Node, method: METHOD | METHOD_ALL): Array<Handler> {
+    const handlers = new Array<Handler>();
+    for (const [nMethod, nHandlers] of node.handlers) {
+      if (nMethod === method || nMethod === "ALL")
+        for (const handler of nHandlers) handlers.push(handler);
+    }
+    return handlers;
+  }
+
+  find(method: METHOD | METHOD_ALL, path: string): Array<Handler> {
     // deno-lint-ignore no-this-alias
     let node: Node = this;
     const parts = pathToParts(path);
     for (const part of parts) {
-      if (!node.children.has(part)) return undefined;
+      if (!node.children.has(part)) return new Array<Handler>();
       else node = node.children.get(part)!;
     }
-    return node.handlers.get(method);
+    return this.getMethods(node, method);
   }
 }
 
