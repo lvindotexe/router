@@ -49,6 +49,7 @@ export const getPattern = (label: string): Pattern | null => {
   }
 
   const match = label.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
+  if (match) console.log({ match: match });
   if (match) {
     if (!patternCache[label]) {
       if (match[2]) {
@@ -142,7 +143,6 @@ export class Node<T> {
         parentPatterns.push(...curNode.patterns);
         possibleKeys.push(pattern[1]);
       }
-      parentPatterns.push(...curNode.patterns);
       curNode = curNode.children[p];
     }
 
@@ -289,3 +289,9 @@ export class Node<T> {
     ];
   }
 }
+
+const app = new Node().insert(
+  "get",
+  "/hello/world/*/:id/:comment_id{[a-z0-9]+}/:user_id{[a-z0-9]+}",
+  () => "hello world"
+);
