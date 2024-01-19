@@ -6,8 +6,9 @@ import {
 
 Deno.test("Root Node", async (t) => {
   const node = new Node();
-  node.add("GET", "/", "get root");
+  node.add("GET", "/","get root");
 
+  console.log("hello world")
   await t.step("get /", () => {
     const [res] = node.find("GET", "/")!;
     assertExists(res);
@@ -88,7 +89,7 @@ Deno.test("Wildcard", async (t) => {
   await t.step("/wildcard-abc/xxxxxx/wildcard-efg/hijk", () => {
     const [res] = node.find("GET", "/wildcard-abc/xxxxxx/wildcard-efg/hijk")!;
     assertExists(res);
-    assertEquals(res[0], "wildcard");
+    assertEquals(res, "wildcard");
   });
 
   await t.step("Special Wildcard", async (t) => {

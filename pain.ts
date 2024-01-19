@@ -1,4 +1,3 @@
-const path = "/hello/*/world";
 const METHOD_NAME_ALL = "ALL";
 export type Params = Record<string, string>;
 
@@ -117,7 +116,7 @@ export class Node<T> {
     this.name = `${method} ${path}`;
     this.order = ++this.order;
 
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    // deno-lint-ignore no-this-alias
     let curNode: Node<T> = this;
     const parts = splitRoutingPath(path);
 
@@ -289,9 +288,3 @@ export class Node<T> {
     ];
   }
 }
-
-const app = new Node().insert(
-  "get",
-  "/hello/world/*/:id/:comment_id{[a-z0-9]+}/:user_id{[a-z0-9]+}",
-  () => "hello world"
-);

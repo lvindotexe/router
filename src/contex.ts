@@ -1,4 +1,4 @@
-import { parse, serialize } from "npm:cookie";
+import { serialize } from "npm:cookie";
 import type { CookieSerializeOptions } from "npm:cookie";
 
 type ValidRedirectStatus = 300 | 301 | 302 | 303 | 304 | 307 | 308;
@@ -106,22 +106,6 @@ class Cookies {
 
   *headers(): Iterator<string> {
     for (const [, val] of this.#outgoing) yield val[1];
-  }
-
-  #ensureOutgoingMap(): Map<string, [string, string, boolean]> {
-    if (!this.#outgoing) {
-      this.#outgoing = new Map();
-    }
-    return this.#outgoing;
-  }
-
-  #parse() {
-    const raw = this.#request.headers.get("cookie");
-    if (!raw) {
-      return;
-    }
-
-    this.#requestValues = parse(raw);
   }
 }
 
