@@ -38,6 +38,13 @@ class Cookie {
   }
 }
 
+export type Context<D extends Record<string,unknown> = Record<string,unknown>> = D &  {
+  url: URL;
+  request: Request;
+  cookies: Cookies;
+  redirect: (location: string, status?: ValidRedirectStatus) => Response;
+};
+
 class Cookies {
   #request: Request;
   #requestValues: Record<string, string>;
@@ -109,23 +116,13 @@ class Cookies {
   }
 }
 
-type Context<T extends Record<string, unknown>> = {
-  decorators: T;
-  url: URL;
-  request: Request;
-  cookies: Cookies;
-  redirect: (location: string, status?: ValidRedirectStatus) => Response;
-};
-
 export function createContext<T extends Record<string, unknown>>(
   request: Request,
-  decorators: T
-): Context<T> {
+): Context {
   return {
     url: new URL(request.url),
     request,
     cookies: new Cookies(request),
-    decorators,
     redirect: (location: string, status?: ValidRedirectStatus) =>
       new Response(null, {
         status: status || 302,

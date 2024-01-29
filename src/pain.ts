@@ -1,6 +1,11 @@
 // deno-lint-ignore-file
 // deno-lint-ignore-file no-explicit-any
-import z, { RefinementCtx, ZodError, ZodTypeAny, NEVER } from "npm:zod";
+import z, {
+  NEVER,
+  RefinementCtx,
+  ZodError,
+  ZodTypeAny
+} from "npm:zod";
 import { Context, createContext } from "./contex.ts";
 
 type Prettify<T> = {
@@ -18,9 +23,9 @@ export type Handler<Decorators extends Record<string, unknown> = any> = (
   next: Next
 ) => Response | Promise<Response>;
 
-type NewState<K extends string, I extends (...args: any[]) => any> = Prettify<{
-  [P in K]: ReturnType<I>;
-}>;
+type InferValidators<T extends Record<string, ZodTypeAny>> = {
+  [k in keyof T]: z.infer<T[k]>;
+};
 
 function split(path: string): Array<string> {
   const parts = path.replace(/\/+$/, "").split("/");
@@ -28,7 +33,7 @@ function split(path: string): Array<string> {
   return parts;
 }
 
-function NotFoundHandler(ctx: Context, next: Next): Response {
+function NotFoundHandler(): Response {
   return new Response("404 not found", { status: 404 });
 }
 
@@ -67,9 +72,9 @@ class Node {
   children: Map<string, Node>;
   isEnd: boolean;
   handlers: Map<Method, Array<Handler>>;
-  router: Router;
+  router: Router<any>;
 
-  constructor(router: Router) {
+  constructor(router: Router<any>) {
     this.children = new Map();
     this.isEnd = false;
     this.router = router;
@@ -88,56 +93,56 @@ class Node {
     return node;
   }
 
-add(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
-  let node: Node = this;
-  const parts = split(path);
-  const len = parts.length;
-  
-  for (const part of parts.slice(0, -1)) {
-    let next = node.children.get(part);
+  add(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
+    const parts = split(path);
+    let node: Node = this;
+    const len = parts.length;
+
+    for (const [i, part] of parts.entries()) {
+      if (i >= len - 1) break;
+      if (!node.children.has(part))
+        node.children.set(part, new Node(node.router));
+      node = node.children.get(part)!;
+    }
+
+    if (arg instanceof Node) {
+      const last = parts[parts.length - 1]!;
+      node.children.set(last, arg);
+      arg.isEnd = true;
+      return;
+    }
+    let next = node.children.get(parts[len - 1]);
     if (!next) {
       next = new Node(node.router);
-      node.children.set(part, next);
+      node.children.set(parts[len - 1], next);
     }
-    node = next;
-  }
-
-  if (arg instanceof Node) {
-    node.children.set(parts[len - 1], arg);
-    arg.isEnd = true;
-    return;
-  }
-
-  if (typeof arg === "string") {
-    const nodeHandlers = node.handlers.get(arg) || [];
-    nodeHandlers.push(...handlers);
-    node.handlers.set(arg, nodeHandlers);
+    node = next!;
+    const method = arg as Method;
+    const existingHandlers = node.handlers.get(method) || [];
+    existingHandlers.push(...handlers);
+    node.handlers.set(method, existingHandlers);
     node.isEnd = true;
   }
-}
-
 
   *[Symbol.iterator]() {
     function* search(
       node: Node,
-      path: string
+      fullPath: string
     ): Iterable<{
       path: string;
       node: Node;
     }> {
-      if (node.isEnd) yield { path: path, node };
-      for (const [nodePath] of node.children) {
+      if (node.isEnd) yield { path: fullPath, node };
+      for (const [path] of node.children) {
         yield* search(
-          node.children.get(nodePath)!,
-          path.concat(`/${nodePath}`).replaceAll(/\/+/g, "/")
+          node.children.get(path)!,
+          fullPath.concat(`/${path}`).replaceAll(/\/+/g, "/")
         );
       }
     }
     yield* search(this, "");
   }
 }
-
-
 
 export class Router<
   Decorators extends Record<string, unknown> = Record<string, unknown>
@@ -147,9 +152,11 @@ export class Router<
   #decorators: Decorators;
   #initialisers: Array<[string, () => any]>;
   #derivations: Array<[string, (ctx: any) => any]>;
+  size: number;
   #middleware: Array<Handler>;
 
   constructor() {
+    this.size = 0;
     this.#root = new Node(this);
     this.#schema = {} as Record<SchemaKeys, ZodTypeAny>;
     this.#decorators = {} as Decorators;
@@ -157,16 +164,12 @@ export class Router<
     this.#derivations = new Array();
     this.#middleware = new Array();
   }
-  #insert(path: string, Node: Node): void;
-  #insert(patj: string, method: Method, ...handlers: Array<Handler>): void;
-  #insert(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
-    if (arg instanceof Node) this.#root.add(path, arg);
-    else this.#root.add(path, arg, ...handlers);
-  }
 
   #find(path: string): Node | null {
-    const node = this.#root.find(path);
     return this.#root.find(path);
+  }
+  #insert(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
+    this.#root.add(path, arg, ...handlers);
   }
 
   //From https://github.com/withastro/astro/blob/d90714fc3dd7c3eab0a6b29319b0b666bb04b678/packages/astro/src/core/middleware/sequence.ts#L8
@@ -187,19 +190,31 @@ export class Router<
         else return next();
       });
     }
-
     return applyHandle(0, ctx);
   }
 
   async #dispatch(request: Request): Promise<Response> {
     const result = await this.build()(
       createContext(request),
-      () => new Response("404 not found", { status: 404 })
+      //@ts-expect-error
+      () => {}
     );
     if (!result) return new Response("404 route not found", { status: 404 });
     if (!result)
       throw new Error("does your middleware return a response object? ");
     else return result as Response;
+  }
+
+  #clone(): Router<Decorators> {
+    const router = new Router<Decorators>();
+
+    router.#schema = this.#schema;
+    router.#decorators = { ...this.#decorators };
+    router.#initialisers = [...this.#initialisers];
+    router.#derivations = [...this.#derivations];
+    router.#middleware = [...this.#middleware];
+
+    return router;
   }
 
   decorate<const K extends string, V>(
@@ -231,25 +246,31 @@ export class Router<
   state<const K extends string, I extends (ctx: Context<Decorators>) => any>(
     key: K,
     initialiser: I
-  ): Router<Decorators & NewState<K, I>>;
+  ): Router<Decorators & { [P in K]: ReturnType<I> }>;
   state<
     const K extends string,
     const I extends () => any,
     const T extends Record<string, () => unknown>
-  >(arg: K | T, initialiser?: I): Router<Decorators & (T | NewState<K, I>)> {
+  >(
+    arg: K | T,
+    initialiser?: I
+  ): Router<
+    Decorators &
+      ({ [P in keyof T]: ReturnType<T[P]> } | { [P in K]: ReturnType<I> })
+  > {
     if (typeof arg === "object") {
       for (const [k, v] of Object.entries(arg)) this.#initialisers.push([k, v]);
-      return this as Router<Decorators & T>;
+      return this as any;
     } else if (typeof arg === "string" && initialiser) {
       this.#initialisers.push([arg, initialiser]);
-      return this as Router<Decorators & NewState<K, I>>;
+      return this as any;
     } else throw new Error("incompatiable arguments");
   }
 
   derive<
     const K extends string,
     const D extends (ctx: Context<Decorators>) => any
-  >(key: K, deriver: D): Router<Decorators & NewState<K, D>> {
+  >(key: K, deriver: D): Router<Decorators & { [P in K]: ReturnType<D> }> {
     this.#derivations.push([key, deriver]);
     return this as any;
   }
@@ -263,17 +284,6 @@ export class Router<
       else this.#schema[k as SchemaKeys] = s;
     }
     return this as any;
-  }
-
-  #clone(): Router<Decorators> {
-    const clone = new Router<Decorators>();
-    clone.#schema = { ...this.#schema };
-    clone.#middleware = [...this.#middleware];
-    clone.#decorators = { ...this.#decorators };
-    clone.#initialisers = [...this.#initialisers];
-    clone.#derivations = [...this.#derivations];
-
-    return clone;
   }
 
   request(
@@ -300,35 +310,37 @@ export class Router<
     path: string,
     arg: Router | ((app: Router<Decorators>) => Router<Decorators>)
   ): Router<Decorators> {
-    const clone = arg instanceof Router ? arg : arg(this.#clone());
-    for (const { node, path: nodePath } of clone.#root)
+    const clone = arg instanceof Router ? arg : arg(this.#clone())
+    for(const {node,path:nodePath} of clone.#root)
       this.#insert(`${path}/${nodePath}`.replaceAll(/\/+/g, "/"), node);
-    return this;
+    return this
   }
 
   build() {
-    return async (ctx: { request: Request }, next: Next) => {
-      const url = new URL(ctx.request.url);
-      const path = url.pathname;
+    return async (ctx: { request: Request }, next?: Next) => {
+      const path = new URL(ctx.request.url).pathname;
       const node = this.#find(path);
-      if (!node) return next();
-      if (this.#schema) {
+      console.log({schema:this.#schema})
+      if (!node) return next ? next() : NotFoundHandler();
+      const router = node.router;
+
+      if (node.router.#schema) {
         const valid = await validateRequest(ctx.request, node.router.#schema);
         if (valid instanceof Error) return errorHandler(valid);
         //@ts-expect-error slutty mutation
         for (const [k, v] of Object.entries(valid)) ctx[k] = v;
       }
       //@ts-expect-error slutty mutation
-      for (const [k, v] of Object.entries(node.router.#decorators)) ctx[k] = v;
+      for (const [k, v] of Object.entries(router.#decorators)) ctx[k] = v;
       //@ts-expect-error slutty mutation
       ctx["forward"] = this.request.bind(this);
-      if (this.#initialisers.length) {
+      if (router.#initialisers.length) {
         //@ts-expect-error slutty mutation
-        for (const [k, i] of node.router.#initialisers) ctx[k] = i();
+        for (const [k, i] of router.#initialisers) ctx[k] = i();
       }
-      if (this.#derivations.length) {
+      if (router.#derivations.length) {
         //@ts-expect-error slutty mutation
-        for (const [k, i] of node.router.#derivations) ctx[k] = i(ctx);
+        for (const [k, i] of router.#derivations) ctx[k] = i(ctx);
       }
       const middleware = node.router.#middleware;
       const handlers = node?.isEnd
@@ -337,8 +349,12 @@ export class Router<
       //@ts-expect-error idk
       return this.#sequence(middleware, ctx as Context, () => {
         if (handlers && handlers.length > 0)
-          return this.#sequence(handlers, ctx as Context<Decorators>, next);
-        else return next();
+          return this.#sequence(
+            handlers,
+            ctx as Context<Decorators>,
+            () => new Response()
+          );
+        else return next ? next() : NotFoundHandler();
       });
     };
   }
@@ -358,7 +374,6 @@ export class Router<
     this.#insert(path, "GET", handler);
     return this;
   }
-
   use(handler: Handler<Decorators>): Router<Decorators> {
     this.#middleware.push(handler);
     return this;
@@ -387,7 +402,7 @@ export function sequence(...handlers: Array<Handler>): Handler {
   };
 }
 
-function zodParseJSOn(string: string, ctx: RefinementCtx): unknown {
+function parseJSONString(string: string, ctx: RefinementCtx): unknown {
   try {
     return JSON.parse(string);
   } catch (error) {
@@ -408,7 +423,7 @@ async function validateRequest(
         return new Error("unsupported content type");
       const bodyResult = z
         .string()
-        .transform(zodParseJSOn)
+        .transform(parseJSONString)
         .pipe(schema)
         .safeParse(await request.clone().text());
       if (bodyResult.success) result.json = bodyResult.data;
@@ -417,7 +432,7 @@ async function validateRequest(
     if (k === "params") {
       const paramsResult = z
         .string()
-        .transform(zodParseJSOn)
+        .transform(parseJSONString)
         .pipe(schema)
         .safeParse(Object.fromEntries(new URL(request.url).searchParams));
       if (paramsResult.success) result.params = paramsResult.data;
@@ -425,4 +440,8 @@ async function validateRequest(
     }
   }
   return result;
+}
+
+function getPattern(part:string){
+  if(part.startsWith(":")) return [part.slice(1),part] as const
 }
