@@ -284,7 +284,7 @@ Deno.test("Composable Guards", async () => {
   assertEquals(await res.text(), "msisdn: 1234567890 sent from brazil");
 });
 
-Deno.test.only("Isolated Guards", async () => {
+Deno.test("Isolated Guards", async () => {
   const app = new Router()
     .register("/greet", (app) =>
       app

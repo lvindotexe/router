@@ -208,7 +208,7 @@ export class Router<
   #clone(): Router<Decorators> {
     const router = new Router<Decorators>();
 
-    router.#schema = this.#schema;
+    router.#schema = {...this.#schema};
     router.#decorators = { ...this.#decorators };
     router.#initialisers = [...this.#initialisers];
     router.#derivations = [...this.#derivations];
@@ -320,7 +320,6 @@ export class Router<
     return async (ctx: { request: Request }, next?: Next) => {
       const path = new URL(ctx.request.url).pathname;
       const node = this.#find(path);
-      console.log({schema:this.#schema})
       if (!node) return next ? next() : NotFoundHandler();
       const router = node.router;
 

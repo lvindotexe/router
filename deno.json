@@ -1,0 +1,5 @@
+{
+    "tasks": {
+        "test":"deno test test/router.test.ts --watch"
+    }
+}
