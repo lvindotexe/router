@@ -1,7 +1,7 @@
-import z from "npm:zod";
-import { Router, sequence } from "../src/index.ts";
 import { assertEquals } from "https://deno.land/std@0.210.0/assert/assert_equals.ts";
 import { assertExists } from "https://deno.land/std@0.210.0/assert/assert_exists.ts";
+import z from "npm:zod";
+import { Router } from "../src/router/index.ts";
 
 Deno.test("GET Request", async () => {
 	const app = new Router()
@@ -227,19 +227,17 @@ Deno.test("Decorating the Context", async () => {
 Deno.test("Chaining Middleware", async () => {
 	const app = new Router().decorate({ count: 1 }).get(
 		"/",
-		sequence(
-			(ctx, next) => {
-				ctx.count++;
-				return next();
-			},
-			(ctx, next) => {
-				ctx.count++;
-				return next();
-			},
-			(ctx) => {
-				return new Response(`${ctx.count}`);
-			},
-		),
+		(ctx, next) => {
+			ctx.count++;
+			return next();
+		},
+		(ctx, next) => {
+			ctx.count++;
+			return next();
+		},
+		(ctx) => {
+			return new Response(`${ctx.count}`);
+		},
 	);
 
 	const res = await app.request("/");

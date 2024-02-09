@@ -21,9 +21,9 @@ type Context<T extends Record<string, unknown>, P = string> = _Context<T> & {
 
 export type Handler<
 	Decorators extends Record<string, unknown> = any,
-	P extends Array<string>[number] = Array<string>[number],
+	P extends Array<string> = Array<string>,
 > = (
-	context: Context<Decorators, P>,
+	context: Context<Decorators, P[number]>,
 	next: Next,
 ) => Response | Promise<Response>;
 
@@ -253,7 +253,7 @@ export class Router<
 
 	post<const P extends string>(
 		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>, Paths[number]>>
+		...handlers: Array<Handler<Prettify<Decorators>, Paths>>
 	): Router<Decorators, Push<Paths, P>> {
 		this.#insert(path, "POST", ...handlers);
 		return this;
@@ -261,12 +261,12 @@ export class Router<
 
 	get<P extends string>(
 		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>, Paths[number]>>
+		...handlers: Array<Handler<Prettify<Decorators>, Paths>>
 	): Router<Decorators, Push<Paths, P>> {
 		this.#insert(path, "GET", ...handlers);
 		return this;
 	}
-	use(...handlers: Array<Handler<Decorators, Paths[number]>>): Router<Decorators, Paths> {
+	use(...handlers: Array<Handler<Decorators, Paths>>): Router<Decorators, Paths> {
 		this.#middleware.push(...handlers);
 		return this;
 	}

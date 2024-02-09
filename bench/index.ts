@@ -1,7 +1,7 @@
 import { Hono } from "npm:hono";
 import { zValidator } from "npm:@hono/zod-validator";
 import { z } from "npm:zod";
-import { Router } from "../src/index.ts";
+import { Router } from "../src/router/index.ts";
 
 //Micro benchmakrs and the lies we tell ourselves
 
