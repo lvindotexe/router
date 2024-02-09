@@ -2,12 +2,25 @@
   "version": "3",
   "packages": {
     "specifiers": {
+      "npm:@hono/zod-validator": "npm:@hono/zod-validator@0.1.11_hono@4.0.0_zod@3.22.4",
       "npm:cookie": "npm:cookie@0.6.0",
+      "npm:hono": "npm:hono@4.0.0",
       "npm:zod": "npm:zod@3.22.4"
     },
     "npm": {
+      "@hono/zod-validator@0.1.11_hono@4.0.0_zod@3.22.4": {
+        "integrity": "sha512-PQXeHUP0+36qpRt8yfeD7N2jbK3ETlGvSN6dMof/HwUC/APRokQRjpXZm4rrlG71Ft0aWE01+Bm4XejqPie5Uw==",
+        "dependencies": {
+          "hono": "hono@4.0.0",
+          "zod": "zod@3.22.4"
+        }
+      },
       "cookie@0.6.0": {
         "integrity": "sha512-U71cyTamuh1CRNCfpGY6to28lxvNwPG4Guz/EVjgf3Jmzv0vlDp1atT9eS5dDjMYHucpHbWns6Lwf3BKz6svdw==",
+        "dependencies": {}
+      },
+      "hono@4.0.0": {
+        "integrity": "sha512-8dKhuBBpRZEodUttQhrSFJ6PQqHRjXHyeeegfxOf132pvgbf0tOb9qqb7q7eYwAWpOcYrsUOsWdJ0sQIIovhZg==",
         "dependencies": {}
       },
       "zod@3.22.4": {

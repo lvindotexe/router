@@ -1,5 +1,10 @@
 {
-    "tasks": {
-        "test":"deno test test/router.test.ts --watch"
-    }
+	"tasks": {
+		"bench": "deno bench bench/index.ts",
+		"test": "deno test test/router.test.ts"
+	},
+	"fmt": {
+		"useTabs": true,
+		"lineWidth": 100
+	}
 }
