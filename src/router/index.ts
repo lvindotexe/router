@@ -15,15 +15,15 @@ type SchemaKeys = "json" | "params";
 
 export type Next = () => Promise<Response> | Response;
 
-type Context<T extends Record<string, unknown>, P = string> = _Context<T> & {
-	forward: (input: URL | P, init?: RequestInit) => Promise<Response>;
+type Context<T extends Record<string, unknown>> = _Context<T> & {
+	forward: (input: URL | string, init?: RequestInit) => Promise<Response>;
 };
 
 export type Handler<
 	Decorators extends Record<string, unknown> = any,
 	P extends Array<string> = Array<string>,
 > = (
-	context: Context<Decorators, P[number]>,
+	context: Context<Decorators>,
 	next: Next,
 ) => Response | Promise<Response>;
 
@@ -37,7 +37,6 @@ function NotFoundHandler(): Response {
 
 export class Router<
 	Decorators extends Record<string, unknown> = Record<string, unknown>,
-	Paths extends Array<string> = [],
 > {
 	#root: Node;
 	#schema: Record<SchemaKeys, z.ZodTypeAny>;
@@ -196,14 +195,13 @@ export class Router<
 
 	register<P extends string>(
 		path: P,
-		app: (app: Router<Decorators, Paths>) => Router<Decorators>,
-	): Router<Decorators, Push<Paths, P>>;
+		app: (app: Router<Decorators>) => Router<Decorators>,
+	): Router<Decorators>;
 	register(path: string, app: Router): Router<Decorators>;
 	register<P extends string>(
 		path: string,
-		arg: Router | ((app: Router<Decorators, Push<Paths, P>>) => Router<Decorators, Push<Paths, P>>),
-	): Router<Decorators, Push<Paths, P>> {
-		//@ts-expect-error casually lying, the paths do not exist in the clone, theyre there for autocomplete
+		arg: Router | ((app: Router<Decorators>) => Router<Decorators>),
+	): Router<Decorators> {
 		const clone = arg instanceof Router ? arg : arg(this.#clone());
 		for (const { node, path: nodePath } of clone.#root) {
 			this.#insert(`${path}/${nodePath}`.replaceAll(/\/+/g, "/"), node);
@@ -253,20 +251,20 @@ export class Router<
 
 	post<const P extends string>(
 		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>, Paths>>
-	): Router<Decorators, Push<Paths, P>> {
+		...handlers: Array<Handler<Prettify<Decorators>>>
+	): Router<Decorators> {
 		this.#insert(path, "POST", ...handlers);
 		return this;
 	}
 
 	get<P extends string>(
 		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>, Paths>>
-	): Router<Decorators, Push<Paths, P>> {
+		...handlers: Array<Handler<Prettify<Decorators>>>
+	): Router<Decorators> {
 		this.#insert(path, "GET", ...handlers);
 		return this;
 	}
-	use(...handlers: Array<Handler<Decorators, Paths>>): Router<Decorators, Paths> {
+	use(...handlers: Array<Handler<Decorators>>): Router<Decorators> {
 		this.#middleware.push(...handlers);
 		return this;
 	}
