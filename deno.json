@@ -6,5 +6,8 @@
 	"fmt": {
 		"useTabs": true,
 		"lineWidth": 100
+	},
+	"compiler":{
+		"lib":["esNext"]
 	}
 }
