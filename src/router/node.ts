@@ -1,6 +1,6 @@
 // deno-lint-ignore-file
 import { Handler, Router } from "./index.ts";
-import { Method } from "./types.ts";
+import { Methods } from "./types.ts";
 
 function split(path: string): Array<string> {
 	const parts = path.replace(/\/+$/, "").split("/");
@@ -11,7 +11,7 @@ function split(path: string): Array<string> {
 export class Node {
 	children: Map<string, Node>;
 	isEnd: boolean;
-	handlers: Map<Method, Array<Handler>>;
+	handlers: Map<Methods, Array<Handler>>;
 	router: Router<any>;
 
 	constructor(router: Router<any>) {
@@ -33,7 +33,7 @@ export class Node {
 		return node;
 	}
 
-	add(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
+	add(path: string, arg: Methods | Node, ...handlers: Array<Handler>): void {
 		const parts = split(path);
 		let node: Node = this;
 		const len = parts.length;
@@ -58,7 +58,7 @@ export class Node {
 			node.children.set(parts[len - 1], next);
 		}
 		node = next!;
-		const method = arg as Method;
+		const method = arg as Methods;
 		const existingHandlers = node.handlers.get(method) || [];
 		existingHandlers.push(...handlers);
 		node.handlers.set(method, existingHandlers);

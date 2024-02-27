@@ -1,9 +1,10 @@
 // deno-lint-ignore-file no-explicit-any no-array-constructor ban-types
 import z from "npm:zod";
-import { Context as _Context, createContext } from "./contex.ts";
 import { Node } from "./node.ts";
 import { errorHandler } from "./err.ts";
-import { type Method, type Push } from "./types.ts";
+import { Context, Handler, Methods, Next } from "./types.ts";
+import { createContext } from "./contex.ts";
+import { HandlerInterface } from "./types.ts";
 
 type Prettify<T> =
 	& {
@@ -11,21 +12,11 @@ type Prettify<T> =
 	}
 	& {};
 
-type SchemaKeys = "json" | "params";
+type SchemaKeys = "json" | "query";
 
-export type Next = () => Promise<Response> | Response;
+type ValidationSchema = Record<SchemaKeys, z.ZodTypeAny>;
 
-type Context<T extends Record<string, unknown>> = _Context<T> & {
-	forward: (input: URL | string, init?: RequestInit) => Promise<Response>;
-};
-
-export type Handler<
-	Decorators extends Record<string, unknown> = any,
-	P extends Array<string> = Array<string>,
-> = (
-	context: Context<Decorators>,
-	next: Next,
-) => Response | Promise<Response>;
+type Methods = Uppercase<(typeof Methods)[number]>;
 
 type InferValidators<T extends Record<string, z.ZodTypeAny>> = {
 	[k in keyof T]: z.infer<T[k]>;
@@ -35,9 +26,18 @@ function NotFoundHandler(): Response {
 	return new Response("404 not found", { status: 404 });
 }
 
+
+function defineDynamciClass(): {
+	new <D extends Record<string, unknown>>(): {
+		[M in Lowercase<Methods>]: HandlerInterface<D>;
+	};
+} {
+	return class {} as never;
+}
+
 export class Router<
 	Decorators extends Record<string, unknown> = Record<string, unknown>,
-> {
+> extends defineDynamciClass()<Decorators> {
 	#root: Node;
 	#schema: Record<SchemaKeys, z.ZodTypeAny>;
 	#decorators: Decorators;
@@ -47,6 +47,7 @@ export class Router<
 	#middleware: Array<Handler>;
 
 	constructor() {
+		super();
 		this.size = 0;
 		this.#root = new Node(this);
 		this.#schema = {} as Record<SchemaKeys, z.ZodTypeAny>;
@@ -54,12 +55,35 @@ export class Router<
 		this.#initialisers = new Array();
 		this.#derivations = new Array();
 		this.#middleware = new Array();
+
+		for (const method of Methods) {
+			this[method] = (
+				path: string,
+				...arg:
+					| [...Array<Handler<Decorators>>, Handler<Decorators>]
+					| [...Array<Handler<Decorators>>, Partial<ValidationSchema>]
+			):Router<Decorators> => {
+				const last = arg.pop()!;
+				if (typeof last === "object") {
+					this.#insert(path, last, "GET", ...(arg as Array<Handler<Decorators>>));
+					return this;
+				} else if (typeof last === "function") {
+					this.#insert(path, undefined, "GET", ...(arg.concat(last) as Array<Handler<Decorators>>));
+				}
+				return this as any;
+			};
+		}
 	}
 
 	#find(path: string): Node | null {
 		return this.#root.find(path);
 	}
-	#insert(path: string, arg: Method | Node, ...handlers: Array<Handler>): void {
+	#insert(
+		path: string,
+		schema: Partial<ValidationSchema> | undefined,
+		arg: Methods | Node,
+		...handlers: Array<Handler>
+	): void {
 		this.#root.add(path, arg, ...handlers);
 	}
 
@@ -160,8 +184,8 @@ export class Router<
 	}
 
 	derive<
-		const K extends string,
-		const D extends (ctx: Context<Decorators>) => any,
+		K extends string,
+		D extends (ctx: Context<Decorators>) => any,
 	>(key: K, deriver: D): Router<Decorators & { [P in K]: ReturnType<D> }> {
 		this.#derivations.push([key, deriver]);
 		return this as any;
@@ -204,7 +228,7 @@ export class Router<
 	): Router<Decorators> {
 		const clone = arg instanceof Router ? arg : arg(this.#clone());
 		for (const { node, path: nodePath } of clone.#root) {
-			this.#insert(`${path}/${nodePath}`.replaceAll(/\/+/g, "/"), node);
+			this.#insert(`${path}/${nodePath}`.replaceAll(/\/+/g, "/"), undefined, node);
 		}
 		return this;
 	}
@@ -235,7 +259,7 @@ export class Router<
 				for (const [k, i] of router.#derivations) ctx[k] = i(ctx);
 			}
 			const middleware = node.router.#middleware;
-			const handlers = node?.isEnd ? node.handlers.get(ctx.request.method as Method) : undefined;
+			const handlers = node?.isEnd ? node.handlers.get(ctx.request.method as Methods) : undefined;
 			//@ts-expect-error idk
 			return this.#sequence(middleware, ctx as Context, () => {
 				if (handlers && handlers.length > 0) {
@@ -249,21 +273,54 @@ export class Router<
 		};
 	}
 
-	post<const P extends string>(
-		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>>>
-	): Router<Decorators> {
-		this.#insert(path, "POST", ...handlers);
-		return this;
-	}
+	// post(
+	// 	path: string,
+	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
+	// ): Router<Decorators>;
+	// post(
+	// 	path: string,
+	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
+	// ): Router<Decorators>;
+	// post(
+	// 	path: string,
+	// 	...arg:
+	// 		| [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
+	// 		| [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
+	// ): Router<Decorators> {
+	// 	const last = arg.pop()!;
+	// 	if (typeof last === "object") {
+	// 		this.#insert(path, last, "POST", ...(arg as Array<Handler<Decorators>>));
+	// 		return this;
+	// 	} else if (typeof last === "function") {
+	// 		this.#insert(path, undefined, "POST", ...(arg.concat(last) as Array<Handler<Decorators>>));
+	// 	}
+	// 	return this;
+	// }
 
-	get<P extends string>(
-		path: P,
-		...handlers: Array<Handler<Prettify<Decorators>>>
-	): Router<Decorators> {
-		this.#insert(path, "GET", ...handlers);
-		return this;
-	}
+	// get(
+	// 	path: string,
+	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
+	// ): Router<Decorators>;
+	// get(
+	// 	path: string,
+	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
+	// ): Router<Decorators>;
+	// get(
+	// 	path: string,
+	// 	...arg:
+	// 		| [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
+	// 		| [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
+	// ): Router<Decorators> {
+	// 	const last = arg.pop()!;
+	// 	if (typeof last === "object") {
+	// 		this.#insert(path, last, "GET", ...(arg as Array<Handler<Decorators>>));
+	// 		return this;
+	// 	} else if (typeof last === "function") {
+	// 		this.#insert(path, undefined, "GET", ...(arg.concat(last) as Array<Handler<Decorators>>));
+	// 	}
+	// 	return this;
+	// }
+
 	use(...handlers: Array<Handler<Decorators>>): Router<Decorators> {
 		this.#middleware.push(...handlers);
 		return this;
@@ -296,7 +353,7 @@ export function sequence(...handlers: Array<Handler>): Handler {
 function parseJSONString(string: string, ctx: z.RefinementCtx): unknown {
 	try {
 		return JSON.parse(string);
-	} catch (e) {
+	} catch (_) {
 		ctx.addIssue({ code: "custom", message: "unable to parse json" });
 		return z.NEVER;
 	}
@@ -324,11 +381,11 @@ async function validateRequest(
 				result.json = bodyResult.data;
 			} else return bodyResult.error;
 		}
-		if (k === "params") {
-			const paramsResult = schema
+		if (k === "query") {
+			const queryResult = schema
 				.safeParse(Object.fromEntries(new URL(request.url).searchParams));
-			if (paramsResult.success) result.params = paramsResult.data;
-			else return paramsResult.error;
+			if (queryResult.success) result.query = queryResult.data;
+			else return queryResult.error;
 		}
 	}
 	return result;
