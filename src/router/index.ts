@@ -2,7 +2,7 @@
 import z from "npm:zod";
 import { Node } from "./node.ts";
 import { errorHandler } from "./err.ts";
-import { Context, Handler, Methods, Next } from "./types.ts";
+import { Context, Handler, InferValidators, Methods, Next, ValidationSchema } from "./types.ts";
 import { createContext } from "./contex.ts";
 import { HandlerInterface } from "./types.ts";
 
@@ -14,18 +14,9 @@ type Prettify<T> =
 
 type SchemaKeys = "json" | "query";
 
-type ValidationSchema = Record<SchemaKeys, z.ZodTypeAny>;
-
-type Methods = Uppercase<(typeof Methods)[number]>;
-
-type InferValidators<T extends Record<string, z.ZodTypeAny>> = {
-	[k in keyof T]: z.infer<T[k]>;
-};
-
 function NotFoundHandler(): Response {
 	return new Response("404 not found", { status: 404 });
 }
-
 
 function defineDynamciClass(): {
 	new <D extends Record<string, unknown>>(): {
@@ -62,13 +53,18 @@ export class Router<
 				...arg:
 					| [...Array<Handler<Decorators>>, Handler<Decorators>]
 					| [...Array<Handler<Decorators>>, Partial<ValidationSchema>]
-			):Router<Decorators> => {
+			): Router<Decorators> => {
 				const last = arg.pop()!;
 				if (typeof last === "object") {
-					this.#insert(path, last, "GET", ...(arg as Array<Handler<Decorators>>));
+					this.#insert(path, last, method, ...(arg as Array<Handler<Decorators>>));
 					return this;
 				} else if (typeof last === "function") {
-					this.#insert(path, undefined, "GET", ...(arg.concat(last) as Array<Handler<Decorators>>));
+					this.#insert(
+						path,
+						undefined,
+						method,
+						...(arg.concat(last) as Array<Handler<Decorators>>),
+					);
 				}
 				return this as any;
 			};
@@ -84,7 +80,7 @@ export class Router<
 		arg: Methods | Node,
 		...handlers: Array<Handler>
 	): void {
-		this.#root.add(path, arg, ...handlers);
+		this.#root.add(path, schema, arg, ...handlers);
 	}
 
 	//From https://github.com/withastro/astro/blob/d90714fc3dd7c3eab0a6b29319b0b666bb04b678/packages/astro/src/core/middleware/sequence.ts#L8
@@ -259,7 +255,9 @@ export class Router<
 				for (const [k, i] of router.#derivations) ctx[k] = i(ctx);
 			}
 			const middleware = node.router.#middleware;
-			const handlers = node?.isEnd ? node.handlers.get(ctx.request.method as Methods) : undefined;
+			const handlers = node?.isEnd
+				? node.handlers.get(ctx.request.method.toLowerCase() as Methods)
+				: undefined;
 			//@ts-expect-error idk
 			return this.#sequence(middleware, ctx as Context, () => {
 				if (handlers && handlers.length > 0) {
@@ -272,54 +270,6 @@ export class Router<
 			});
 		};
 	}
-
-	// post(
-	// 	path: string,
-	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
-	// ): Router<Decorators>;
-	// post(
-	// 	path: string,
-	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
-	// ): Router<Decorators>;
-	// post(
-	// 	path: string,
-	// 	...arg:
-	// 		| [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
-	// 		| [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
-	// ): Router<Decorators> {
-	// 	const last = arg.pop()!;
-	// 	if (typeof last === "object") {
-	// 		this.#insert(path, last, "POST", ...(arg as Array<Handler<Decorators>>));
-	// 		return this;
-	// 	} else if (typeof last === "function") {
-	// 		this.#insert(path, undefined, "POST", ...(arg.concat(last) as Array<Handler<Decorators>>));
-	// 	}
-	// 	return this;
-	// }
-
-	// get(
-	// 	path: string,
-	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
-	// ): Router<Decorators>;
-	// get(
-	// 	path: string,
-	// 	...handlers: [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
-	// ): Router<Decorators>;
-	// get(
-	// 	path: string,
-	// 	...arg:
-	// 		| [...Array<Handler<Prettify<Decorators>>>, Handler<Prettify<Decorators>>]
-	// 		| [...Array<Handler<Prettify<Decorators>>>, Partial<ValidationSchema>]
-	// ): Router<Decorators> {
-	// 	const last = arg.pop()!;
-	// 	if (typeof last === "object") {
-	// 		this.#insert(path, last, "GET", ...(arg as Array<Handler<Decorators>>));
-	// 		return this;
-	// 	} else if (typeof last === "function") {
-	// 		this.#insert(path, undefined, "GET", ...(arg.concat(last) as Array<Handler<Decorators>>));
-	// 	}
-	// 	return this;
-	// }
 
 	use(...handlers: Array<Handler<Decorators>>): Router<Decorators> {
 		this.#middleware.push(...handlers);

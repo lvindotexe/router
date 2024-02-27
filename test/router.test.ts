@@ -246,18 +246,28 @@ Deno.test("Chaining Middleware", async () => {
 });
 
 Deno.test("Guard Validation", async () => {
+	let counter = 0
 	const res = await new Router()
 		.guard({ json: z.object({ msisdn: z.string() }) })
 		.post("/", ({ json }) => {
 			return new Response(`msisdn: ${json.msisdn} sent`, { status: 200 });
 		})
+		.post('/other',
+		 	(_,next) => {counter++;return next()},
+		 	(_,next) => {counter++;return next()},
+			({json}) => new Response(`msisdn: ${json.msisdn,json.name}`),
+			{json:z.object({name:z.string()})}
+		)
 		.request("/", {
 			method: "POST",
+			headers:{'content-type':'application/json'},
 			body: JSON.stringify({ msisdn: "1234567890" }),
 		});
 
 	assertEquals(res.status, 200);
 	assertEquals(await res.text(), "msisdn: 1234567890 sent");
+	console.log({counter})
+	assertEquals(counter,2)
 });
 
 Deno.test("Composable Guards", async () => {
@@ -271,6 +281,7 @@ Deno.test("Composable Guards", async () => {
 		})
 		.request("/", {
 			method: "POST",
+			headers:{'content-type':'application/json'},
 			body: JSON.stringify({ msisdn: "1234567890", country: "brazil" }),
 		});
 
@@ -298,7 +309,10 @@ Deno.test("Isolated Guards", async () => {
 
 	res = await app.request("/greet", {
 		method: "POST",
+		headers:{'content-type':"application/json"},
 		body: JSON.stringify({ name: "moto" }),
 	});
 	assertEquals(await res.text(), "hello moto");
 });
+
+

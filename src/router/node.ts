@@ -1,6 +1,6 @@
 // deno-lint-ignore-file
-import { Handler, Router } from "./index.ts";
-import { Methods } from "./types.ts";
+import type { Router } from "./index.ts";
+import type { Handler, Methods, ValidationSchema } from "./types.ts";
 
 function split(path: string): Array<string> {
 	const parts = path.replace(/\/+$/, "").split("/");
@@ -11,11 +11,13 @@ function split(path: string): Array<string> {
 export class Node {
 	children: Map<string, Node>;
 	isEnd: boolean;
+	schema: Partial<ValidationSchema>;
 	handlers: Map<Methods, Array<Handler>>;
 	router: Router<any>;
 
 	constructor(router: Router<any>) {
 		this.children = new Map();
+		this.schema = {};
 		this.isEnd = false;
 		this.router = router;
 		this.handlers = new Map();
@@ -33,7 +35,12 @@ export class Node {
 		return node;
 	}
 
-	add(path: string, arg: Methods | Node, ...handlers: Array<Handler>): void {
+	add(
+		path: string,
+		schema: Partial<ValidationSchema> | undefined,
+		arg: Methods | Node,
+		...handlers: Array<Handler>
+	): void {
 		const parts = split(path);
 		let node: Node = this;
 		const len = parts.length;
@@ -62,6 +69,7 @@ export class Node {
 		const existingHandlers = node.handlers.get(method) || [];
 		existingHandlers.push(...handlers);
 		node.handlers.set(method, existingHandlers);
+		node.schema = schema ?? {};
 		node.isEnd = true;
 	}
 
