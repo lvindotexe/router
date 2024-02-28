@@ -11,7 +11,7 @@ function split(path: string): Array<string> {
 export class Node {
 	children: Map<string, Node>;
 	isEnd: boolean;
-	schema: Partial<ValidationSchema>;
+	schema: Partial<ValidationSchema> | undefined
 	handlers: Map<Methods, Array<Handler>>;
 	router: Router<any>;
 
@@ -69,7 +69,7 @@ export class Node {
 		const existingHandlers = node.handlers.get(method) || [];
 		existingHandlers.push(...handlers);
 		node.handlers.set(method, existingHandlers);
-		node.schema = schema ?? {};
+		node.schema = schema;
 		node.isEnd = true;
 	}
 
