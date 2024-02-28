@@ -5,10 +5,8 @@ import { Router } from "../src/router/index.ts";
 
 //Micro benchmakrs and the lies we tell ourselves
 
-const otherhandler = new Router()
-  .guard({ json: z.object({ name: z.string() }) })
-  .register('/',(app) => app.post('/',({json}) => new Response(`hi your name is ${json.name}`)))
-  .post("/", ({ json }) => new Response(`hi your name is ${json.name}`))
+const handlerValidation = new Router()
+  .register('/',(app) => app.post('/',({json}) => new Response(`hi your name is ${json.name}`),{json:z.object({name:z.string()})}))
   .build();
 
 const handler = new Router()
@@ -22,7 +20,7 @@ const simple = async (req: Request) => {
   return new Response(`hi your name is ${name}`);
 };
 
-const otherHonoHandler = new Hono().post(
+const honoValidation = new Hono().post(
   "/",
   zValidator("query", z.object({ name: z.string() }), (res) => {
     if (!res.success) return new Response("bad params", { status: 400 });
@@ -58,7 +56,7 @@ Deno.bench({
 });
 
 Deno.bench({
-  name: "otherhandler",
+  name: "handler with validation",
   group: "routers",
   baseline: true,
   fn: async (b) => {
@@ -71,13 +69,13 @@ Deno.bench({
     });
 
     b.start();
-    await otherhandler({ request });
+    await handlerValidation({ request });
     b.end();
   },
 });
 
 Deno.bench({
-  name: "simple",
+  name: "hono validation",
   group: "routers",
   baseline: true,
   fn: async (b) => {
@@ -90,7 +88,7 @@ Deno.bench({
     });
 
     b.start();
-    await simple(request);
+    await honoValidation(request);
     b.end();
   },
 });
