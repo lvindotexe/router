@@ -1,4 +1,4 @@
-// deno-lint-ignore-file
+// deno-lint-ignore-file ban-types no-explicit-any
 import { Context as _Context } from "./contex.ts";
 import { z } from "npm:zod";
 import { Router } from "./index.ts";

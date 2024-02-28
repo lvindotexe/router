@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any no-array-constructor ban-types
-import z, { object } from "npm:zod";
+import z from "npm:zod";
 import { Node } from "./node.ts";
 import { errorHandler } from "./err.ts";
 import {
@@ -99,7 +99,7 @@ export class Router<
   ): Response | Promise<Response> {
     const length = handlers.length;
     if (!length) return next();
-    // @ts-expect-error
+    // @ts-expect-error pain
     // SAFETY: Usually `next` always returns something in user land, but in `sequence` we are actually
     // doing a loop over all the `next` functions, and eventually we call the last `next` that returns the `Response`.
     function applyHandle(i: number, handleContext: Context<Decorators>) {
