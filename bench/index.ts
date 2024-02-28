@@ -6,12 +6,18 @@ import { Router } from "../src/router/index.ts";
 //Micro benchmakrs and the lies we tell ourselves
 
 const handlerValidation = new Router()
-  .register('/',(app) => app.post('/',({json}) => new Response(`hi your name is ${json.name}`),{json:z.object({name:z.string()})}))
+  .register("/", (app) =>
+    app.post("/", ({ json }) => new Response(`hi your name is ${json.name}`), {
+      json: z.object({ name: z.string() }),
+    })
+  )
   .build();
 
 const handler = new Router()
-  .register("/", (app) =>
-    app.post("/", async ({ request }) => new Response(`hi your name is ${(await request.json()).name}`))
+  .post(
+    "/",
+    async ({ request }) =>
+      new Response(`hi your name is ${(await request.json()).name}`)
   )
   .build();
 
@@ -31,10 +37,10 @@ const honoValidation = new Hono().post(
   }
 ).fetch;
 
-const honoHandler = new Hono()
-  .post('/',async ({req}) => new Response(`hi your name is ${(await req.json()).name}`))
-  .fetch
-
+const honoHandler = new Hono().post(
+  "/",
+  async ({ req }) => new Response(`hi your name is ${(await req.json()).name}`)
+).fetch;
 
 Deno.bench({
   name: "handler",
