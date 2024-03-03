@@ -5,114 +5,46 @@ import { Router } from "../src/router/index.ts";
 
 //Micro benchmakrs and the lies we tell ourselves
 
-const handlerValidation = new Router()
-  .register("/", (app) =>
-    app.post("/", ({ json }) => new Response(`hi your name is ${json.name}`), {
-      json: z.object({ name: z.string() }),
-    })
-  )
-  .build();
-
 const handler = new Router()
-  .post(
-    "/",
-    async ({ request }) =>
-      new Response(`hi your name is ${(await request.json()).name}`)
-  )
-  .build();
+	.guard({ query: z.object({ name: z.string() }) })
+	.post("/", ({ query }) => new Response(`hi your name is ${query.name} ${query.surname}`),{query:z.object({surname:z.string()})})
+	.build()
 
-const simple = async (req: Request) => {
-  const { name } = (await req.json()) as { name: string };
-  return new Response(`hi your name is ${name}`);
-};
 
-const honoValidation = new Hono().post(
-  "/",
-  zValidator("query", z.object({ name: z.string() }), (res) => {
-    if (!res.success) return new Response("bad params", { status: 400 });
-  }),
-  (c) => {
-    const body = c.req.valid("query");
-    return c.text(`hi your name is ${body.name}`);
-  }
-).fetch;
 
-const honoHandler = new Hono().post(
-  "/",
-  async ({ req }) => new Response(`hi your name is ${(await req.json()).name}`)
-).fetch;
+const honoHandler = new Hono()
+	.post(
+		"/",
+		zValidator("query", z.object({ name: z.string(),surname:z.string() }), (res) => {
+			if (!res.success) return new Response("bad params", { status: 400 });
+		}),
+		(c) => {
+			const body = c.req.valid("query");
+			return c.text(`hi your name is ${body.name}`);
+		},
+	).fetch;
 
-Deno.bench({
-  name: "handler",
-  group: "routers",
-  baseline: true,
-  fn: async (b) => {
-    const request = new Request("http://localhost:8000/?name=mark", {
-      method: "POST",
-      body: JSON.stringify({ name: "mark" }),
-      headers: {
-        "content-type": "application/json",
-      },
-    });
-
-    b.start();
-    await handler({ request });
-    b.end;
-  },
+const request = new Request("http://localhost:8000/?name=mark&surname=aurelius", {
+	method: "POST",
+	body: JSON.stringify({ name: "mark" }),
+	headers: {
+		"content-type": "application/json",
+	},
 });
 
 Deno.bench({
-  name: "handler with validation",
-  group: "routers",
-  baseline: true,
-  fn: async (b) => {
-    const request = new Request("http://localhost:8000/?name=mark", {
-      method: "POST",
-      body: JSON.stringify({ name: "mark" }),
-      headers: {
-        "content-type": "application/json",
-      },
-    });
-
-    b.start();
-    await handlerValidation({ request });
-    b.end();
-  },
+	name: "router",
+	group: "routers",
+	baseline: true,
+	fn: async () => {
+		await handler({ request });
+	},
 });
 
 Deno.bench({
-  name: "hono validation",
-  group: "routers",
-  baseline: true,
-  fn: async (b) => {
-    const request = new Request("http://localhost:8000/?name=mark", {
-      method: "POST",
-      body: JSON.stringify({ name: "mark" }),
-      headers: {
-        "content-type": "application/json",
-      },
-    });
-
-    b.start();
-    await honoValidation(request);
-    b.end();
-  },
-});
-
-Deno.bench({
-  name: "hono",
-  group: "routers",
-  fn: async (b) => {
-    const request = new Request("http://localhost:8000/?name=mark", {
-      method: "POST",
-      body: JSON.stringify({ name: "mark" }),
-      headers: {
-        "content-type": "application/json",
-      },
-    });
-
-    b.start();
-    await honoHandler(request);
-    b.end();
-  },
+	name: "hono",
+	group: "routers",
+	fn: async () => {
+		await honoHandler(request);
+	},
 });

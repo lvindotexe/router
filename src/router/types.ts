@@ -25,15 +25,21 @@ export type InferValidators<T extends Record<string, z.ZodTypeAny>> = {
 };
 
 export type Handler<
-	Decorators extends Record<string, unknown> = any
+	Decorators extends Record<string, unknown> = any,
 > = (
 	context: Context<Decorators>,
 	next: Next,
 ) => Response | Promise<Response>;
 
 export interface HandlerInterface<D extends Record<string, unknown>> {
-	<v extends Partial<ValidationSchema>>(path: string, ...handlers: [...Array<Handler<D>>, Handler<D>]): Router<D>;
-	<V extends Partial<ValidationSchema>>(path: string, ...handlers: [...Array<Handler<D & InferValidators<V>>>, V]): Router<D>;
+	<v extends Partial<ValidationSchema>>(
+		path: string,
+		...handlers: [...Array<Handler<D>>, Handler<D>]
+	): Router<D>;
+	<V extends Partial<ValidationSchema>>(
+		path: string,
+		...handlers: [...Array<Handler<D & InferValidators<V>>>, V]
+	): Router<D>;
 	<V extends Partial<ValidationSchema>>(
 		path: string,
 		...handlers: [...Array<Handler<D & InferValidators<V>>>, Handler<D & InferValidators<V>>] | [
