@@ -1,8 +1,6 @@
 import { serialize } from "npm:cookie";
 import type { CookieSerializeOptions } from "npm:cookie";
 
-type ValidRedirectStatus = 300 | 301 | 302 | 303 | 304 | 307 | 308;
-
 const DELETED_EXPIRATION = new Date(0);
 const DELETED_VALUE = "deleted";
 
@@ -18,7 +16,8 @@ type CookieSetOptions = {
 
 type CookieDeleteOptions = Pick<CookieSetOptions, "domain" | "path">;
 
-class Cookie {
+
+export class Cookie {
 	value: string;
 	constructor(value: string) {
 		this.value = value;
@@ -38,14 +37,8 @@ class Cookie {
 	}
 }
 
-export type Context<D extends Record<string, unknown> = Record<string, unknown>> = D & {
-	url: URL;
-	request: Request;
-	cookies: Cookies;
-	redirect: (location: string, status?: ValidRedirectStatus) => Response;
-};
 
-class Cookies {
+export class Cookies {
 	#request: Request;
 	#requestValues: Record<string, string>;
 	#outgoing: Map<string, [string, string, boolean]>;

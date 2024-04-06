@@ -1,5 +1,5 @@
 import { z } from "npm:zod";
-import { Router } from "../src/index.ts";
+import { Router } from "../src/router/index.ts";
 
 const handle = new Router()
 	.guard({ json: z.object({ name: z.string() }) })
