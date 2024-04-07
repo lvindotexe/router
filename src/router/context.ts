@@ -9,16 +9,24 @@ type ResponseOptions = {
 	statusText?: string;
 };
 
+new Headers([['hello','world']])
+
 export class Context {
-	#headers: Headers | undefined;
+	#headers: Headers;
 	url: URL;
 	request: Request;
 	cookies: Cookies;
 
 	constructor(request: Request) {
+		this.#headers = new Headers();
 		this.url = new URL(request.url);
 		this.request = request;
 		this.cookies = new Cookies(request);
+	}
+
+	#respond(content: string, options: ResponseOptions) {
+		for (const [k, v] of new Headers(options.headers).entries()) this.#headers?.set(k, v);
+		return new Response(content, options);
 	}
 
 	redirect(location: string, status?: ValidRedirectStatus) {
@@ -31,41 +39,21 @@ export class Context {
 	}
 
 	text(text: string, options: ResponseOptions): Response {
-		return new Response(text, {
-			status: options.status,
-			statusText: options.statusText,
-			headers: options.headers,
-			// headers:new Headers(...this.cookies)
-		});
+		return this.#respond(text,options)
 	}
 
 	json(val: Record<string, unknown>, options: ResponseOptions): Response {
-		return new Response(JSON.stringify(val), {
-			status: options.status,
-			statusText: options.statusText,
-			headers: options.headers,
-			// headers:new Headers(...this.cookies)
-		});
-	}
-
-	html(val: Record<string, unknown>, options: ResponseOptions): Response {
-		return new Response(JSON.stringify(val), {
-			status: options.status,
-			statusText: options.statusText,
-			headers: options.headers,
-			// headers:new Headers(...this.cookies)
-		});
+		return this.#respond(JSON.stringify(val),options)
 	}
 
 	header(key: string, value: string | undefined) {
 		if (value === undefined) {
-			if(this.#headers) this.#headers.delete(key)
+			if (this.#headers) this.#headers.delete(key);
 			return;
 		}
-		if(!this.#headers) {
+		if (!this.#headers) {
 			this.#headers = new Headers([[key, value]]);
-			return
-		}
-		else this.#headers.set(key,value)
+			return;
+		} else this.#headers.set(key, value);
 	}
 }
