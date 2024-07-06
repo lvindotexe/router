@@ -1,3 +1,5 @@
+import { Router } from "../router/index.ts";
+
 interface ProxyCallbackOptions {
 	path: string[];
 	args: unknown[];
@@ -5,7 +7,7 @@ interface ProxyCallbackOptions {
 
 type ProxyCallback = (opts: ProxyCallbackOptions) => unknown;
 
-function createRecursiveProxy(callback: ProxyCallback, path: string[]) {
+function createRecursiveProxy(callback: ProxyCallback, path: string[]):unknown {
 	return new Proxy(
 		() => {
 			// dummy no-op function since we don't have any

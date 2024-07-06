@@ -1,21 +1,27 @@
-import { serialize } from "npm:cookie";
-import type { CookieSerializeOptions } from "npm:cookie";
+import { serialize,parse } from "cookie";
+import type { CookieSerializeOptions } from "cookie";
 
 const DELETED_EXPIRATION = new Date(0);
 const DELETED_VALUE = "deleted";
 
-type CookieSetOptions = {
-	domain?: string;
-	expires?: Date;
-	httpOnly?: boolean;
-	maxAge?: number;
-	path?: string;
-	sameSite?: boolean | "lax" | "none" | "strict";
-	secure?: boolean;
-};
+export class RequestCookie {
 
-type CookieDeleteOptions = Pick<CookieSetOptions, "domain" | "path">;
+	#req:Request
+	#incoming:Record<string,string>
+	constructor(req:Request){
+		this.#req = req
+		const pain = parse('cookie')
+		this.#incoming = parse(req.headers.get('Cookie') ?? '')
+	}
 
+	get(key:string):Cookie | undefined {
+		return !!this.#incoming[key] ? new Cookie(this.#incoming[key]) : undefined
+	}
+
+	has(key:string):boolean {
+		return key in this.#incoming
+	}
+}
 
 export class Cookie {
 	value: string;
@@ -35,17 +41,29 @@ export class Cookie {
 	boolean() {
 		return typeof this.value === "boolean" ? this.value : Boolean(this.value);
 	}
+
+	toString(){
+		return this.value
+	}
 }
+
+type CookieSetOptions = {
+	domain?: string;
+	expires?: Date;
+	httpOnly?: boolean;
+	maxAge?: number;
+	path?: string;
+	sameSite?: boolean | "lax" | "none" | "strict";
+	secure?: boolean;
+};
+
+type CookieDeleteOptions = Pick<CookieSetOptions, "domain" | "path">;
 
 
 export class Cookies {
-	#request: Request;
-	#requestValues: Record<string, string>;
 	#outgoing: Map<string, [string, string, boolean]>;
 
-	constructor(req: Request) {
-		this.#request = req;
-		this.#requestValues = {};
+	constructor() {
 		this.#outgoing = new Map();
 	}
 
@@ -69,8 +87,7 @@ export class Cookies {
 			if (isSetValue) return new Cookie(serialisedVal);
 			else return undefined;
 		}
-		const value = this.#requestValues[key];
-		return value ? new Cookie(value) : undefined;
+		return undefined
 	}
 
 	has(key: string): boolean {
@@ -78,7 +95,7 @@ export class Cookies {
 			const [, , isSetValue] = this.#outgoing.get(key)!;
 			return isSetValue;
 		}
-		return !!this.#requestValues[key];
+		return false
 	}
 
 	set(
@@ -104,24 +121,7 @@ export class Cookies {
 		]);
 	}
 
-	*headers(): Iterator<string> {
-		for (const [, val] of this.#outgoing) yield val[1];
+	*[Symbol.iterator](): Iterator<[string,string]> {
+		for (const [_,[str,ser]] of this.#outgoing) yield [str,ser];
 	}
-}
-
-export function createContext<T extends Record<string, unknown>>(
-	request: Request,
-): Context {
-	return {
-		url: new URL(request.url),
-		request,
-		cookies: new Cookies(request),
-		redirect: (location: string, status?: ValidRedirectStatus) =>
-			new Response(null, {
-				status: status || 302,
-				headers: {
-					location,
-				},
-			}),
-	};
 }

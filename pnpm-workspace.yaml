@@ -1,0 +1,5 @@
+packages:
+  - "bench"
+  - "playground"
+  - "packages/*"
+

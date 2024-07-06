@@ -1,3 +1,0 @@
-- rpc client
-- do more than routing
-  - actually handle 404s

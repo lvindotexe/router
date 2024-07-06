@@ -1,6 +1,6 @@
 // deno-lint-ignore-file
 import type { Router } from "./index.ts";
-import type { Handler, Methods, ValidationSchema } from "./types.ts";
+import type { Handler, Methods, ValidationSchema } from "../types/index.ts";
 
 function split(path: string): Array<string> {
 	const parts = path.replace(/\/+$/, "").split("/");

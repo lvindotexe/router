@@ -1,9 +1,8 @@
-import { assertEquals } from "https://deno.land/std@0.210.0/assert/assert_equals.ts";
-import { assertExists } from "https://deno.land/std@0.210.0/assert/assert_exists.ts";
-import z from "npm:zod";
+import z from "zod";
+import {expect,test,describe} from 'vitest'
 import { Router } from "../src/router/index.ts";
 
-Deno.test("GET Request", async () => {
+test("GET Request", async () => {
 	const app = new Router()
 		.get("/hello", () => {
 			return new Response("hello", {
@@ -22,49 +21,48 @@ Deno.test("GET Request", async () => {
 		});
 
 	let res = await app.request("hello");
-	assertExists(res);
-	assertEquals(res.status, 200);
-	assertEquals(res.statusText, "Router is OK");
-	assertEquals(await res.text(), "hello");
+	expect(res.status).toBe(200);
+	expect(res.statusText).toBe("Router is OK");
+	expect(await res.text()).toBe('hello');
 
 	res = await app.request("httphello");
-	assertEquals(res.status, 404);
+	expect(res.status).toBe(404);
 
 	res = await app.request("/hello");
-	assertExists(res);
-	assertEquals(res.status, 200);
-	assertEquals(res.statusText, "Router is OK");
-	assertEquals(await res.text(), "hello");
+	expect(res).toBeDefined();
+	expect(res.status).toBe(200);
+	expect(res.statusText).toBe("Router is OK");
+	expect(await res.text()).toBe("hello");
 
 	res = await app.request("hello");
-	assertExists(res);
-	assertEquals(res.status, 200);
-	assertEquals(res.statusText, "Router is OK");
-	assertEquals(await res.text(), "hello");
+	expect(res).toBeDefined();
+	expect(res.status).toBe(200);
+	expect(res.statusText).toBe("Router is OK");
+	expect(await res.text()).toBe("hello");
 
 	res = await app.request("hello-with-shortcuts");
-	assertExists(res);
-	assertEquals(res.status, 201);
-	assertEquals(res.headers.get("X-Custom"), "custom-header");
-	assertEquals(res.headers.get("Content-Type"), "text/html");
-	assertEquals(await res.text(), "<h1>Router!!!</h1>");
+	expect(res).toBeDefined();
+	expect(res.status).toBe(201);
+	expect(res.headers.get("X-Custom")).toBe("custom-header");
+	expect(res.headers.get("Content-Type")).toBe("text/html");
+	expect(await res.text()).toBe("<h1>Router!!!</h1>");
 
 	res = await app.request("http://localhost/");
-	assertExists(res);
-	assertEquals(res.status, 404);
+	expect(res).toBeDefined();
+	expect(res.status).toBe(404);
 });
 
-Deno.test("Customization", async () => {
+test("Customization", async () => {
 	const res = await new Router()
 		.decorate({ hello: "world" })
 		.get("/", (ctx) => new Response(`hello ${ctx.hello}`))
 		.request("/");
 
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "hello world");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("hello world");
 });
 
-Deno.test("Reinitialize Values Per Request", async () => {
+test("Reinitialize Values Per Request", async () => {
 	const app = new Router().state({ hello: () => new Map() }).get("/", (ctx) => {
 		ctx.hello.set(crypto.randomUUID(), "value");
 		return new Response(`${ctx.hello.size}`);
@@ -74,13 +72,13 @@ Deno.test("Reinitialize Values Per Request", async () => {
 	while (count < 10) {
 		const res = await app.request("/");
 		const text = await res.text();
-		assertEquals(res.status, 200);
-		assertEquals(text, "1");
+		expect(res.status).toBe(200);
+		expect(text).toBe("1");
 		count++;
 	}
 });
 
-Deno.test("Derive State from State and Decorators", async () => {
+test("Derive State from State and Decorators", async () => {
 	const app = new Router()
 		.state({ uuid: () => crypto.randomUUID() })
 		.state({ world: () => "world" })
@@ -92,29 +90,28 @@ Deno.test("Derive State from State and Decorators", async () => {
 		});
 	const res = await app.request("/");
 	const [key, uuid, world] = await res.text().then((r) => r.split(" "));
-	assertEquals(res.status, 200);
-	assertEquals(key, "hello");
-	assertEquals(
+	expect(res.status).toBe(200);
+	expect(key).toBe("hello");
+	expect(
 		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
 			uuid,
 		),
-		true,
-	);
-	assertEquals(world, "world");
+	).toBe(true);
+	expect(world).toBe("world");
 });
 
-Deno.test("Return Itself", async () => {
+test("Return Itself", async () => {
 	const app = new Router();
 	const app2 = app.get("/", () => new Response("get /"));
-	assertExists(app2);
+	expect(app2).toBeDefined();
 
 	const res = await app2.request("http://localhost/", { method: "GET" });
-	assertExists(res);
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "get /");
+	expect(res).toBeDefined();
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("get /");
 });
 
-Deno.test("Accept Little Mutation", async () => {
+test("Accept Little Mutation", async () => {
 	const app = new Router()
 		.decorate({ hello: "world" })
 		.get("/", () => new Response("root"))
@@ -131,13 +128,12 @@ Deno.test("Accept Little Mutation", async () => {
 			));
 
 	let res = await app.request("/");
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "root");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("root");
 
 	res = await app.request("/sub");
-	assertEquals(res.status, 200);
-	assertEquals(
-		await res.text(),
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe(
 		JSON.stringify({
 			world: "hello",
 			hello: "world",
@@ -145,7 +141,7 @@ Deno.test("Accept Little Mutation", async () => {
 	);
 });
 
-Deno.test("Nested Route", async () => {
+test("Nested Route", async () => {
 	const app = new Router();
 	const book = new Router()
 		.get("/", () => new Response("get /book"))
@@ -164,32 +160,32 @@ Deno.test("Nested Route", async () => {
 		);
 
 	let res = await app.request("http://localhost/book", { method: "GET" });
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "get /book");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("get /book");
 
 	res = await app.request("http://localhost/book", { method: "POST" });
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "post /book");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("post /book");
 
 	res = await app.request("http://localhost/book/", { method: "GET" });
-	assertEquals(res.status, 200);
+	expect(res.status).toBe(200);
 
 	res = await app.request("http://localhost/user/login", { method: "GET" });
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "logged in");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("logged in");
 
 	res = await app.request("http://localhost/user/register", { method: "POST" });
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "registered");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("registered");
 
 	res = await app.request("http://localhost/add-path-after-route-call", {
 		method: "GET",
 	});
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "get /add-path-after-route-call");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("get /add-path-after-route-call");
 });
 
-Deno.test("Registers SubRoutes", async () => {
+test("Registers SubRoutes", async () => {
 	const app = new Router()
 		.register("/", () =>
 			new Router()
@@ -202,15 +198,15 @@ Deno.test("Registers SubRoutes", async () => {
 		.get("/api/start", () => new Response("get /api/start"));
 
 	let res = await app.request("/");
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "get 22 /");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("get 22 /");
 
 	res = await app.request("/api/start");
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "get /api/start");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("get /api/start");
 });
 
-Deno.test("Decorating the Context", async () => {
+test("Decorating the Context", async () => {
 	const app = new Router()
 		.decorate({ hello: "world", count: 1 })
 		.get("/", ({ hello }) => new Response(`hello ${hello}`))
@@ -220,11 +216,11 @@ Deno.test("Decorating the Context", async () => {
 		});
 
 	const res = await app.request("/");
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "hello world");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("hello world");
 });
 
-Deno.test("Chaining Middleware", async () => {
+test("Chaining Middleware", async () => {
 	const app = new Router().decorate({ count: 1 }).get(
 		"/",
 		(ctx, next) => {
@@ -242,10 +238,10 @@ Deno.test("Chaining Middleware", async () => {
 
 	const res = await app.request("/");
 	const text = await res.text();
-	assertEquals(text, "3");
+	expect(text).toBe("3");
 });
 
-Deno.test.only("Guard Validation", async () => {
+test.only("Guard Validation", async () => {
 	let counter = 0;
 	const app = await new Router()
 		.guard({ json: z.object({ msisdn: z.string() }) })
@@ -272,8 +268,8 @@ Deno.test.only("Guard Validation", async () => {
 		body: JSON.stringify({ msisdn: "1234567890" }),
 	});
 	let text = await res.text();
-	assertEquals(res.status, 200);
-	assertEquals(text, "msisdn: 1234567890 sent");
+	expect(res.status).toBe(200);
+	expect(text).toBe("msisdn: 1234567890 sent");
 
 	res = await app.request("/other", {
 		method: "POST",
@@ -282,11 +278,11 @@ Deno.test.only("Guard Validation", async () => {
 	});
 
 	text = await res.text();
-	assertEquals(text, "msisdn: 1234567890 marcus");
-	assertEquals(counter, 2);
+	expect(text).toBe("msisdn: 1234567890 marcus");
+	expect(counter).toBe(2);
 });
 
-Deno.test("Composable Guards", async () => {
+test("Composable Guards", async () => {
 	const res = await new Router()
 		.guard({ json: z.object({ msisdn: z.string() }) })
 		.guard({ json: z.object({ country: z.string() }) })
@@ -301,11 +297,11 @@ Deno.test("Composable Guards", async () => {
 			body: JSON.stringify({ msisdn: "1234567890", country: "brazil" }),
 		});
 
-	assertEquals(res.status, 200);
-	assertEquals(await res.text(), "msisdn: 1234567890 sent from brazil");
+	expect(res.status).toBe(200);
+	expect(await res.text()).toBe("msisdn: 1234567890 sent from brazil");
 });
 
-Deno.test("Isolated Guards", async () => {
+test("Isolated Guards", async () => {
 	const app = new Router()
 		.register("/greet", (app) =>
 			app
@@ -318,15 +314,15 @@ Deno.test("Isolated Guards", async () => {
 		.get("/", () => new Response("hello from root"));
 
 	let res = await app.request("/");
-	assertEquals(await res.text(), "hello from root");
+	expect(await res.text()).toBe("hello from root");
 
 	res = await app.request("/hello");
-	assertEquals(await res.text(), "hello world");
+	expect(await res.text()).toBe("hello world");
 
 	res = await app.request("/greet", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ name: "moto" }),
 	});
-	assertEquals(await res.text(), "hello moto");
+	expect(await res.text()).toBe("hello moto");
 });
