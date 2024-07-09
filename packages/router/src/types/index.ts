@@ -7,9 +7,22 @@ import { RedirectStatusCode, StatusCode } from "./status";
 import { type Context } from "../router/context";
 
 export type ValidationSchema = Record<
-	"json" | "query" | "headers" | "cookies",
+	"json" | "query" | "headers" | "cookie",
 	z.ZodTypeAny
 >;
+
+export type ValidationTargets = {
+	json:unknown,
+	query:Record<string,string | Array<string>>
+	headers:Record<string,string>
+	cookies:Record<string,string>
+} 
+
+export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
+  k: infer I
+) => void
+  ? I
+  : never
 
 export const Methods = ["post", "get"] as const;
 export type Methods = (typeof Methods)[number];
@@ -61,6 +74,8 @@ export type TypedResponse<
 	: never;
 
 type AddDollar<T extends string> = `$${Lowercase<T>}`;
+export type IsAny<T> = boolean extends (T extends never ? true : false) ? true
+	: false;
 
 export type Input<V extends Partial<ValidationSchema>> = {
 	in: Prettify<InferValidators<V>>;
@@ -82,41 +97,45 @@ export type ToSchema<
 	{
 		[K in P]: {
 			[K2 in M as AddDollar<K2>]: Prettify<
-				{
+				& {
 					input: Prettify<InferValidators<V>>;
 				}
-			> //    & (IsAny<R> extends true
-			;
-		} // ? {
-		;
-	} //     output: {}
-> //     outputFormat: ResponseFormat
-; //     status: StatusCode
-//   }
-// : R extends TypedResponse<infer T, infer U, infer F>
-// ? {
-//     output: unknown extends T ? {} : T
-//     outputFormat: I extends { outputFormat: string } ? I['outputFormat'] : F
-//     status: U
-//   }
-// : {
-//     output: unknown extends R ? {} : R
-//     outputFormat: unknown extends R
-//       ? 'json'
-//       : I extends { outputFormat: string }
-//       ? I['outputFormat']
-//       : 'json'
-//     status: StatusCode
-//   })
+				& (
+					IsAny<R> extends true
+						? {
+							data: {};
+							status: StatusCode;
+							format: ResponseFormat;
+						}
+						: R extends
+							TypedResponse<
+								infer TData,
+								infer TInit,
+								infer TFormat
+							> ? {
+								data: TData;
+								status: TInit extends Init<any,infer TStatus,any> ? TStatus : StatusCode;
+								format: TFormat;
+							}
+						: {
+							data: {};
+							status: StatusCode;
+							format: ResponseFormat;
+						}
+				)
+			>;
+		};
+	}
+>;
 
-type HandlerResponse<T> =
+type HandlerResponse<T = any> =
 	| Response
 	| TypedResponse<T>
 	| Promise<Response | TypedResponse<T>>;
 
 export type Schema = {
 	[Path: string]: {
-		[Method: `${Lowercase<string>}`]: Endpoint;
+		[Method: `$${Lowercase<string>}`]: Endpoint;
 	};
 };
 
@@ -139,7 +158,7 @@ export interface HandlerInterface<
 		D2 extends Record<string, unknown> = D,
 	>(
 		path: P,
-		...handlers: [...Array<Handler<D2, P, V>>, Handler<D2, P, V>]
+		...handlers: [...Array<Handler<D2, P, V, R>>, Handler<D2, P, V>]
 	): Router<D, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;
 	<
 		P extends string,
@@ -148,7 +167,7 @@ export interface HandlerInterface<
 		D2 extends Record<string, unknown> = D,
 	>(
 		path: P,
-		...handlers: [...Array<Handler<D2, P, V>>, V]
+		...handlers: [...Array<Handler<D2, P, V, R>>, V]
 	): Router<D2, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;
 	<
 		P extends string,
@@ -158,9 +177,9 @@ export interface HandlerInterface<
 	>(
 		path: P,
 		...handlers:
-			| [...Array<Handler<D2, P, V>>, Handler<D, P, V>]
+			| [...Array<Handler<D2, P, V, R>>, Handler<D, P, V>]
 			| [
-				...Array<Handler<D2, P, V>>,
+				...Array<Handler<D2, P, V, R>>,
 				V,
 			]
 	): Router<D, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;

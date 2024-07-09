@@ -12,9 +12,7 @@ export class HTTPError extends Error {
 		this.status = status;
 	}
 	getResponse(): Response {
-		if (this.res) {
-			return this.res;
-		}
+		if(this.res) return this.res
 		return new Response(this.message, {
 			status: this.status,
 		});
@@ -22,9 +20,6 @@ export class HTTPError extends Error {
 }
 
 export function errorHandler(err: Error) {
-	console.error(err);
-	if (err instanceof HTTPError) {
-		return err.getResponse();
-	}
+	if (err instanceof HTTPError)return err.getResponse();
 	return new Response("Internal Server Error", { status: 500 });
 }

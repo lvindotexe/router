@@ -1,6 +1,7 @@
 import {  expect, test } from "vitest";
 import { Router } from "../src/router";
 import z from "zod";
+import { rc } from "../src/client";
 
 const app = new Router()
     .decorate("hello", "world")
@@ -24,6 +25,10 @@ console.log({text:await res.text()});
 
 res = await app.request(new Request('http://127.0.0.1:8000/'))
 console.log({text:await res.text()});
+
+const client = rc<typeof app>('http://127.0.0.1:8000')
+
+client
 
 test("hell", () => {
     expect(true).toBe(true);

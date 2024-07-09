@@ -24,23 +24,16 @@ function notFoundHandler(): Response {
   return new Response("404 not found", { status: 404 });
 }
 
-/*
- * handles the routing
- *
- * @template Decorators - context decorators
- * @template Schema - schema
- * @template BasePath - the router base path
- */
+
 export class Router<
-  D extends Record<string, unknown> = Record<string, unknown>,
+  D extends Record<string, unknown> = {},
   S extends Schema = {},
   P extends string = "/",
 > {
   #root: Node;
   #schema: ValidationSchema;
-  #decorators: D;
-  #initialisers: Array<[string, () => any]>;
-  #derivations: Array<[string, (ctx: any) => any]>;
+  #initialisers: Array<[string, () => unknown]>;
+  #derivations: Array<[string, (ctx: Context<D,P>) => unknown]>;
   size: number;
   #middleware: Array<Handler>;
   #notFoundHandler: RouterOptions["notFoundHandler"];
@@ -52,7 +45,6 @@ export class Router<
     this.size = 0;
     this.#root = new Node(this);
     this.#schema = {} as ValidationSchema;
-    this.#decorators = {} as D;
     this.#initialisers = new Array();
     this.#derivations = new Array();
     this.#middleware = new Array();
@@ -71,7 +63,7 @@ export class Router<
   //From https://github.com/withastro/astro/blob/d90714fc3dd7c3eab0a6b29319b0b666bb04b678/packages/astro/src/core/middleware/sequence.ts#L8
   #sequence(
     handlers: Array<Handler>,
-    ctx: Context<D>,
+    ctx: Context<D,P>,
     next: Next,
   ): Response | Promise<Response> {
     const length = handlers.length;
@@ -91,7 +83,7 @@ export class Router<
   }
 
   async #dispatch(request: Request): Promise<Response> {
-    const ctx = new _Context(request);
+    const ctx = new _Context(request) as Context<D,P>;
     const path = new URL(request.url).pathname;
     const node = this.#root.find(path);
     if (!node) return this.#notFoundHandler();
@@ -100,7 +92,12 @@ export class Router<
       ? await validateRequest(ctx.req, mergeSchema(this.#schema, schema))
       : undefined;
     if(result instanceof Error) return errorHandler(result)
-    if(result) Object.assign(_Context.prototype,result)
+    //@ts-expect-error
+    if(this.#initialisers.length) for(const [k,v] of this.#initialisers) ctx[k] = v()
+    //@ts-expect-error
+    if(this.#derivations.length) for(const [k,v] of this.#derivations) ctx[k] = v(ctx)
+    //@ts-expect-error
+    if(result) for(const [k,v] of Object.entries(result)) ctx[k] = v
     const handlers = node?.isEnd
       ? node.handlers.get(ctx.req.method.toLowerCase() as Methods)
       : undefined;
@@ -120,11 +117,10 @@ export class Router<
     return response;
   }
 
-  #clone(): Router<D> {
-    const router = new Router<D>();
+  #clone(): Router<D,S,P> {
+    const router = new Router<D,S,P>();
 
     router.#schema = { ...this.#schema };
-    router.#decorators = { ...this.#decorators };
     router.#initialisers = [...this.#initialisers];
     router.#derivations = [...this.#derivations];
     router.#middleware = [...this.#middleware];
@@ -135,7 +131,7 @@ export class Router<
   decorate<const K extends string, V>(
     key: K,
     value: V,
-  ): Router<Prettify<D & { [P in K]: V }>>;
+  ): Router<Prettify<D & { [P in K]: V }>,S,P>;
   decorate<T extends Record<string, unknown>>(
     decorators: T,
   ): Router<Prettify<D & T>>;
@@ -146,15 +142,17 @@ export class Router<
   >(
     arg: K | T,
     value?: V,
-  ): Router<Prettify<D & (T | { [P in K]: P })>> {
+  ): Router<Prettify<D & (T | { [P in K]: P })>,S,P> {
     if (typeof arg === "object") {
-      this.#decorators = { ...this.#decorators, ...arg };
-      Object.assign(_Context.prototype, this.#decorators);
-      return this as Router<Prettify<D & T>>;
+      for(const [k,v] of Object.entries(arg)){
+    //@ts-expect-error
+        _Context.prototype[k] = v
+      }
+      return this as any
     }
     //@ts-expect-error
     _Context.prototype[arg] = value;
-    return this as Router<Prettify<D & T>>;
+    return this as any
   }
 
   state<const T extends Record<string, () => unknown>>(
@@ -348,10 +346,9 @@ function mergeSchema(
   return acc;
 }
 
+
 const router = new Router()
-  .decorate("hello", "world")
-  .get("/", ({ hello }) => new Response(hello))
-  .get("/other", () => new Response("other"))
+  // .get('/other',(c) => new Response('hello world'))
   .post("/post", (c) => c.json({hello:'world'},{status:201}), {
     json: z.object({ uuid: z.string() }),
   });
