@@ -1,5 +1,8 @@
-import { ValidationSchema } from "../types";
+import z, { optional, ZodTypeAny } from "zod";
+import { InferValidators, ValidationSchema } from "../types";
 import { RequestCookie } from "./cookies";
+import { HTTPError } from "./err";
+import { parse } from "cookie";
 
 type Body = {
     json: unknown;
@@ -16,23 +19,19 @@ function decodeURI(value: string) {
     return value;
 }
 
-export class RouterRequest<TPath extends string = "/", V extends Partial<ValidationSchema> = {}> {
+export class RouterRequest {
     raw: Request;
-    path: string;
-
     #headerDataCache: Record<string, string | undefined> | undefined;
     bodyCache: BodyCache;
-    cookie:RequestCookie
+    cookie: RequestCookie;
 
-    constructor(request: Request, path:string ='/') {
+    constructor(request: Request) {
         this.raw = request;
-        this.path = path;
         this.bodyCache = {};
-        this.cookie = new  RequestCookie(request)
+        this.cookie = new RequestCookie(request);
     }
 
-
-    #getQueryParams(url: string, key?: string,multiple:boolean = true) {
+    #getQueryParams(url: string, key?: string, multiple: boolean = true) {
         let encoded: boolean;
 
         if (!multiple && key && !/[%+]/.test(key)) {
@@ -40,13 +39,20 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
             let keyIndex = url.indexOf(`?${key}`, 7);
             if (keyIndex === -1) url.indexOf(`&${key}`, 7);
             while (keyIndex !== -1) {
-                const trailingKeyCOde = url.charCodeAt(keyIndex + key.length + 1);
+                const trailingKeyCOde = url.charCodeAt(
+                    keyIndex + key.length + 1,
+                );
                 if (trailingKeyCOde === 61) {
                     const valueIndex = keyIndex + key.length + 2;
                     const endIndex = url.indexOf("&", valueIndex);
-                    const value = url.slice(valueIndex, endIndex === -1 ? undefined : endIndex);
+                    const value = url.slice(
+                        valueIndex,
+                        endIndex === -1 ? undefined : endIndex,
+                    );
                     return decodeURI(value);
-                } else if (trailingKeyCOde === 38 && isNaN(trailingKeyCOde)) return "";
+                } else if (trailingKeyCOde === 38 && isNaN(trailingKeyCOde)) {
+                    return "";
+                }
                 keyIndex = url.indexOf(`%${key}`, keyIndex + 1);
             }
             encoded = /[%+]/.test(url);
@@ -54,9 +60,10 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
         }
 
         encoded ??= /[%+]/.test(url);
-        const results: Record<string, string> | Record<string, Array<string>> = {};
+        const results: Record<string, string> | Record<string, Array<string>> =
+            {};
 
-        let keyIndex = url.indexOf("?", 8);
+        let keyIndex = url.indexOf("?", 7);
         while (keyIndex !== -1) {
             const nextKeyIndex = url.indexOf("&", keyIndex + 1);
             let valueIndex = url.indexOf("=", keyIndex);
@@ -65,7 +72,9 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
             }
             let name = url.slice(
                 keyIndex + 1,
-                valueIndex === -1 ? (nextKeyIndex === -1 ? undefined : nextKeyIndex) : valueIndex,
+                valueIndex === -1
+                    ? (nextKeyIndex === -1 ? undefined : nextKeyIndex)
+                    : valueIndex,
             );
             if (encoded) {
                 name = decodeURI(name);
@@ -81,7 +90,10 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
             if (valueIndex === -1) {
                 value = "";
             } else {
-                value = url.slice(valueIndex + 1, nextKeyIndex === -1 ? undefined : nextKeyIndex);
+                value = url.slice(
+                    valueIndex + 1,
+                    nextKeyIndex === -1 ? undefined : nextKeyIndex,
+                );
                 if (encoded) {
                     value = decodeURI(value);
                 }
@@ -108,16 +120,18 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
 
         const anyCachedKey = Object.keys(bodyCache)[0] as keyof Body;
         if (anyCachedKey) {
-            return (bodyCache[anyCachedKey] as Promise<BodyInit>).then((body) => {
-                if (anyCachedKey === "json") body = JSON.stringify(body);
-                return new Response(body)[key]();
-            });
+            return (bodyCache[anyCachedKey] as Promise<BodyInit>).then(
+                (body) => {
+                    if (anyCachedKey === "json") body = JSON.stringify(body);
+                    return new Response(body)[key]();
+                },
+            );
         }
 
-        const result = raw[key]() as Promise<Partial<Body>>
+        const result = raw[key]() as Promise<Partial<Body>>;
         //@ts-ignore
-        bodyCache[key] = result
-        return result
+        bodyCache[key] = result;
+        return result;
     }
 
     get url() {
@@ -131,7 +145,7 @@ export class RouterRequest<TPath extends string = "/", V extends Partial<Validat
     query(key: string): string | undefined;
     query(): Record<string, string>;
     query(key?: string) {
-        return this.#getQueryParams(this.url, key,false);
+        return this.#getQueryParams(this.url, key, false);
     }
 
     queries(key: string): string[] | undefined;

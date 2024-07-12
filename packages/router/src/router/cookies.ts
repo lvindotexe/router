@@ -101,7 +101,7 @@ export class Cookies {
 	set(
 		key: string,
 		value: string | Record<string, unknown>,
-		options: CookieSetOptions,
+		options?: CookieSetOptions,
 	) {
 		let serialisedVal: string;
 		if (typeof value === "string") serialisedVal = value;

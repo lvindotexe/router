@@ -6,23 +6,26 @@ import { JSONValue } from "./json";
 import { RedirectStatusCode, StatusCode } from "./status";
 import { type Context } from "../router/context";
 
-export type ValidationSchema = Record<
-	"json" | "query" | "headers" | "cookie",
-	z.ZodTypeAny
+export type ValidationSchema = Partial<
+	Record<
+		"json" | "query" | "headers" | "cookie" | "form",
+		z.ZodTypeAny
+	>
 >;
 
 export type ValidationTargets = {
-	json:unknown,
-	query:Record<string,string | Array<string>>
-	headers:Record<string,string>
-	cookies:Record<string,string>
-} 
+	json: unknown;
+	query: Record<string, string | Array<string>>;
+	form: Record<string, string | Array<string> | File>;
+	headers: Record<string, string>;
+	cookie: Record<string, string>;
+};
 
-export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
-  k: infer I
-) => void
-  ? I
-  : never
+export type UnionToIntersection<U> =
+	(U extends any ? (k: U) => void : never) extends (
+		k: infer I,
+	) => void ? I
+		: never;
 
 export const Methods = ["post", "get"] as const;
 export type Methods = (typeof Methods)[number];
@@ -41,11 +44,10 @@ export type InferValidators<T extends Record<string, z.ZodTypeAny>> = {
 
 export type Handler<
 	D extends Record<string, unknown> = any,
-	P extends string = string,
 	V extends Partial<ValidationSchema> = any,
 	R extends HandlerResponse<any> = any,
 > = (
-	context: Context<D, P, V>,
+	context: Context<D, V>,
 	next: Next,
 ) => R;
 
@@ -101,20 +103,20 @@ export type ToSchema<
 					input: Prettify<InferValidators<V>>;
 				}
 				& (
-					IsAny<R> extends true
-						? {
+					IsAny<R> extends true ? {
 							data: {};
 							status: StatusCode;
 							format: ResponseFormat;
 						}
-						: R extends
-							TypedResponse<
-								infer TData,
-								infer TInit,
-								infer TFormat
-							> ? {
+						: R extends TypedResponse<
+							infer TData,
+							infer TInit,
+							infer TFormat
+						> ? {
 								data: TData;
-								status: TInit extends Init<any,infer TStatus,any> ? TStatus : StatusCode;
+								status: TInit extends
+									Init<any, infer TStatus, any> ? TStatus
+									: StatusCode;
 								format: TFormat;
 							}
 						: {
@@ -140,47 +142,72 @@ export type Schema = {
 };
 
 export type Endpoint = {
-	input: Partial<ValidationSchema>;
-	output: any;
-	status: RedirectStatusCode;
+	input: InferValidators<Partial<ValidationSchema>>;
+	data: any;
+	format: ResponseFormat;
+	status: StatusCode;
 };
+export type IfAnyThenEmptyObject<T> = 0 extends 1 & T ? {} : T;
+type EnvOrEmpty<T> = T extends Record<string, string>
+	? (Record<string, string> extends T ? {} : T)
+	: T;
+type IntersectNonAnyTypes<T extends any[]> = T extends
+	[infer Head, ...infer Rest]
+	? IfAnyThenEmptyObject<EnvOrEmpty<Head>> & IntersectNonAnyTypes<Rest>
+	: {};
 
 export interface HandlerInterface<
-	D extends Record<string, unknown> = {},
-	M extends Methods = Methods,
-	S extends Schema = {},
-	BasePath extends string = "/",
+  D extends Record<string, unknown> = {},
+  M extends Methods = Methods,
+  S extends Schema = {},
+  BasePath extends string = "/",
+  V extends ValidationSchema = ValidationSchema,
 > {
-	<
-		P extends string,
-		V extends Partial<ValidationSchema> = {},
-		R extends HandlerResponse<any> = any,
-		D2 extends Record<string, unknown> = D,
-	>(
-		path: P,
-		...handlers: [...Array<Handler<D2, P, V, R>>, Handler<D2, P, V>]
-	): Router<D, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;
-	<
-		P extends string,
-		V extends Partial<ValidationSchema> = {},
-		R extends HandlerResponse<any> = any,
-		D2 extends Record<string, unknown> = D,
-	>(
-		path: P,
-		...handlers: [...Array<Handler<D2, P, V, R>>, V]
-	): Router<D2, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;
-	<
-		P extends string,
-		V extends Partial<ValidationSchema> = {},
-		R extends HandlerResponse<any> = any,
-		D2 extends Record<string, unknown> = D,
-	>(
-		path: P,
-		...handlers:
-			| [...Array<Handler<D2, P, V, R>>, Handler<D, P, V>]
-			| [
-				...Array<Handler<D2, P, V, R>>,
-				V,
-			]
-	): Router<D, Prettify<S & ToSchema<M, P, V, R>>, BasePath>;
+  // Overload with no additional validation schema (V2)
+  <
+    P extends string,
+    R extends HandlerResponse<any> = any,
+    D2 extends Record<string, unknown> = D,
+  >(
+    path: P,
+    ...handlers: [...Array<Handler<D & D2, V, R>>, Handler<D & D2, V, R>]
+  ): Router<
+    IntersectNonAnyTypes<[D, D2]>,
+    Prettify<S & ToSchema<M, P, V, R>>,
+    BasePath
+  >;
+
+  // Overload with an additional validation schema (V2)
+  <
+    P extends string,
+    R extends HandlerResponse<any> = any,
+    D2 extends Record<string, unknown> = D,
+    V2 extends ValidationSchema = ValidationSchema
+  >(
+    path: P,
+    ...handlers: [...Array<Handler<D2 & D, IntersectNonAnyTypes<[V, V2]>, R>>, V2]
+  ): Router<
+    IntersectNonAnyTypes<[D, D2]>,
+    Prettify<S & ToSchema<M, P, IntersectNonAnyTypes<[V,V2]>, R>>,
+    BasePath,
+    IntersectNonAnyTypes<[V, V2]>
+  >;
+
+  // Generalized overload combining both cases
+  <
+    P extends string,
+    R extends HandlerResponse<any> = any,
+    D2 extends Record<string, unknown> = D,
+    V2 extends ValidationSchema = ValidationSchema
+  >(
+    path: P,
+    ...handlers:
+      | [...Array<Handler<D2 & D, V, R>>, Handler<D, V>]
+      | [...Array<Handler<D2 & D, IntersectNonAnyTypes<[V,V2]>, R>>, V2]
+  ): Router<
+    IntersectNonAnyTypes<[D, D2]>,
+    Prettify<S & ToSchema<M, P, V, R>>,
+    BasePath,
+    IntersectNonAnyTypes<[V, V2]>
+  >;
 }

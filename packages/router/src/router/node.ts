@@ -15,7 +15,7 @@ export class Node {
 	handlers: Map<Methods, Array<Handler>>;
 	router: Router<any>;
 
-	constructor(router: Router<any>) {
+	constructor(router: Router<any,any,any,any>) {
 		this.children = new Map();
 		this.schema = {};
 		this.isEnd = false;

@@ -13,33 +13,39 @@ import {
 } from "../types/index.js";
 import z from "zod";
 import { RouterRequest } from "./request.js";
-import { errorHandler } from "./err.js";
+import { errorHandler, HTTPError } from "./err.js";
+import { parse } from "cookie";
 
 type RouterOptions = {
-  basePath?:string
+  basePath?: string;
   notFoundHandler: () => Response;
 };
 
 function notFoundHandler(): Response {
   return new Response("404 not found", { status: 404 });
+  "request";
 }
-
+const schema = z.object({ hello: z.string() });
+const pain: HandlerInterface = (path, ...handlers) => {
+  return undefined as any;
+};
 
 export class Router<
   D extends Record<string, unknown> = {},
   S extends Schema = {},
   P extends string = "/",
+  V extends ValidationSchema = ValidationSchema,
 > {
   #root: Node;
   #schema: ValidationSchema;
   #initialisers: Array<[string, () => unknown]>;
-  #derivations: Array<[string, (ctx: Context<D,P>) => unknown]>;
+  #derivations: Array<[string, (ctx: Context<D, V>) => unknown]>;
   size: number;
   #middleware: Array<Handler>;
   #notFoundHandler: RouterOptions["notFoundHandler"];
 
   constructor(options: RouterOptions = {
-    basePath:'/',
+    basePath: "/",
     notFoundHandler,
   }) {
     this.size = 0;
@@ -48,7 +54,7 @@ export class Router<
     this.#initialisers = new Array();
     this.#derivations = new Array();
     this.#middleware = new Array();
-    this.#notFoundHandler = options.notFoundHandler
+    this.#notFoundHandler = options.notFoundHandler;
   }
 
   #insert(
@@ -63,7 +69,7 @@ export class Router<
   //From https://github.com/withastro/astro/blob/d90714fc3dd7c3eab0a6b29319b0b666bb04b678/packages/astro/src/core/middleware/sequence.ts#L8
   #sequence(
     handlers: Array<Handler>,
-    ctx: Context<D,P>,
+    ctx: Context<D, V>,
     next: Next,
   ): Response | Promise<Response> {
     const length = handlers.length;
@@ -71,54 +77,74 @@ export class Router<
     // @ts-expect-error pain
     // SAFETY: Usually `next` always returns something in user land, but in `sequence` we are actually
     // doing a loop over all the `next` functions, and eventually we call the last `next` that returns the `Response`.
-    function applyHandle(i: number, handleContext: _Context<D>) {
+    function applyHandle(i: number, handleContext: _Context<V>) {
       const handle = handlers[i];
-      // deno-lint-ignore require-await
       return handle(handleContext, async () => {
         if (i < length - 1) return applyHandle(i + 1, handleContext);
         else return next();
       });
     }
-    return applyHandle(0, ctx);
+    try {
+      return applyHandle(0, ctx);
+    } catch (error) {
+      if (error instanceof HTTPError) return errorHandler(error);
+      return errorHandler(
+        new Error("unknown error occured", { cause: error }),
+      );
+    }
   }
 
   async #dispatch(request: Request): Promise<Response> {
-    const ctx = new _Context(request) as Context<D,P>;
     const path = new URL(request.url).pathname;
     const node = this.#root.find(path);
     if (!node) return this.#notFoundHandler();
-    const { router, schema } = node;
-    const result = schema
-      ? await validateRequest(ctx.req, mergeSchema(this.#schema, schema))
-      : undefined;
-    if(result instanceof Error) return errorHandler(result)
-    //@ts-expect-error
-    if(this.#initialisers.length) for(const [k,v] of this.#initialisers) ctx[k] = v()
-    //@ts-expect-error
-    if(this.#derivations.length) for(const [k,v] of this.#derivations) ctx[k] = v(ctx)
-    //@ts-expect-error
-    if(result) for(const [k,v] of Object.entries(result)) ctx[k] = v
-    const handlers = node?.isEnd
-      ? node.handlers.get(ctx.req.method.toLowerCase() as Methods)
-      : undefined;
-    //@ts-expect-error idk
-    const response = this.#sequence(router.#middleware, ctx as _Context, () => {
-      if (handlers && handlers.length > 0) {
-        return this.#sequence(
-          handlers,
-          ctx as Context<D>,
-          () => new Response("hello world"),
-        );
-      } else return this.#notFoundHandler();
-    });
-    if (!response) {
-      throw new Error("does your middleware return a response object? ");
+    const { router } = node;
+    const schema = node.schema
+      ? mergeSchema(this.#schema, node.schema)
+      : this.#schema;
+    const req = new RouterRequest(request);
+    try {
+      const result = await validateRequest(req, schema);
+      if (result instanceof Error) return errorHandler(result);
+      const ctx = new _Context(req, { validationCache: result }) as Context<
+        D,
+        V
+      >;
+      if (this.#initialisers.length) {
+        //@ts-expect-error
+        for (const [k, v] of this.#initialisers) ctx[k] = v();
+      }
+      if (this.#derivations.length) {
+        //@ts-expect-error
+        for (const [k, v] of this.#derivations) ctx[k] = v(ctx);
+      }
+      const handlers = node?.isEnd
+        ? node.handlers.get(ctx.req.method.toLowerCase() as Methods)
+        : undefined;
+      const response = this.#sequence(router.#middleware, ctx, () => {
+        if (handlers && handlers.length > 0) {
+          return this.#sequence(
+            handlers,
+            ctx,
+            () => new Response("hello world"),
+          );
+        } else return this.#notFoundHandler();
+      });
+      if (!response) {
+        throw new Error("does your middleware return a response object? ");
+      }
+      return response;
+    } catch (error) {
+      return errorHandler(
+        error instanceof Error
+          ? error
+          : new Error("unknown error occured", { cause: error }),
+      );
     }
-    return response;
   }
 
-  #clone(): Router<D,S,P> {
-    const router = new Router<D,S,P>();
+  #clone(): Router<D, S, P, V> {
+    const router = new Router<D, S, P, V>();
 
     router.#schema = { ...this.#schema };
     router.#initialisers = [...this.#initialisers];
@@ -131,7 +157,7 @@ export class Router<
   decorate<const K extends string, V>(
     key: K,
     value: V,
-  ): Router<Prettify<D & { [P in K]: V }>,S,P>;
+  ): Router<Prettify<D & { [P in K]: V }>, S, P>;
   decorate<T extends Record<string, unknown>>(
     decorators: T,
   ): Router<Prettify<D & T>>;
@@ -142,17 +168,17 @@ export class Router<
   >(
     arg: K | T,
     value?: V,
-  ): Router<Prettify<D & (T | { [P in K]: P })>,S,P> {
+  ): Router<Prettify<D & (T | { [P in K]: P })>, S, P> {
     if (typeof arg === "object") {
-      for(const [k,v] of Object.entries(arg)){
-    //@ts-expect-error
-        _Context.prototype[k] = v
+      for (const [k, v] of Object.entries(arg)) {
+        //@ts-expect-error
+        _Context.prototype[k] = v;
       }
-      return this as any
+      return this as any;
     }
     //@ts-expect-error
     _Context.prototype[arg] = value;
-    return this as any
+    return this as any;
   }
 
   state<const T extends Record<string, () => unknown>>(
@@ -182,7 +208,7 @@ export class Router<
     } else throw new Error("incompatiable arguments");
   }
 
-  derive<K extends string, C extends (ctx: Context<D>) => any>(
+  derive<K extends string, C extends (ctx: Context<D, V>) => any>(
     key: K,
     deriver: C,
   ): Router<C & { [P in K]: ReturnType<C> }> {
@@ -192,14 +218,15 @@ export class Router<
 
   guard<T extends Partial<ValidationSchema>>(
     schema: T,
-  ): Router<Prettify<D & InferValidators<T>>> {
-    for (const [k, s] of Object.entries(schema)) {
-      if (this.#schema[k as keyof ValidationSchema]) {
-        this.#schema[k as keyof ValidationSchema] = this
-          .#schema[k as keyof ValidationSchema].and(
-            s,
-          );
-      } else this.#schema[k as keyof ValidationSchema] = s;
+  ): Router<D, S, P, T & V> {
+    for (
+      const [k, s] of Object.entries(schema) as Array<
+        [keyof ValidationSchema, z.ZodTypeAny]
+      >
+    ) {
+      const parentSchema = this.#schema[k];
+      if (parentSchema) parentSchema.and(s);
+      this.#schema[k] = s;
     }
     return this as any;
   }
@@ -218,13 +245,13 @@ export class Router<
 
   register<P extends string>(
     path: P,
-    app: (app: Router<D>) => Router<D>,
-  ): Router<D>;
-  register(path: string, app: Router): Router<D>;
+    app: (app: Router<D, S, P, V>) => Router<D, S, P, V>,
+  ): Router<D, S, P, V>;
+  register(path: string, app: Router): Router<D, S, P, V>;
   register<P extends string>(
     path: P,
-    arg: Router | ((app: Router<D>) => Router<D>),
-  ): Router<D> {
+    arg: Router | ((app: Router<D, S, P, V>) => Router<D, S, P, V>),
+  ): Router<D, S, P, V> {
     const clone = arg instanceof Router ? arg : arg(this.#clone());
     for (const { node, path: nodePath } of clone.#root) {
       this.#insert(
@@ -236,12 +263,17 @@ export class Router<
     return this;
   }
 
-  use(...handlers: Array<Handler<D>>): Router<D> {
+  use(...handlers: Array<Handler<D>>): Router<D, S, P, V> {
     this.#middleware.push(...handlers);
     return this;
   }
 
-  get: HandlerInterface<D, "get", S, P> = (path, ...arg) => {
+  get: HandlerInterface<D, "get", S, P, V> = <
+    P extends string,
+    R extends HandlerResponse<any> = any,
+    D2 extends Record<string, unknown> = D,
+    V2 extends ValidationSchema = ValidationSchema,
+  >(path, ...arg) => {
     const last = arg.pop()!;
     if (typeof last === "object") {
       this.#insert(
@@ -262,7 +294,7 @@ export class Router<
     return this as any;
   };
 
-  post: HandlerInterface<D, "get", S, P> = (path, ...arg) => {
+  post: HandlerInterface<D, "post", S, P, V> = (path, ...arg) => {
     const last = arg.pop()!;
     if (typeof last === "object") {
       this.#insert(
@@ -284,50 +316,80 @@ export class Router<
   };
 }
 
-function parseJSONString(string: string, ctx: z.RefinementCtx): unknown {
-  try {
-    return JSON.parse(string);
-  } catch (_) {
-    ctx.addIssue({ code: "custom", message: "unable to parse json" });
-    return z.NEVER;
-  }
-}
-
-async function validateRequest(
+async function validateRequest<V extends ValidationSchema>(
   request: RouterRequest,
-  guard: Partial<ValidationSchema>,
-): Promise<Record<string, unknown> | Error> {
-  const result = {} as Record<keyof ValidationSchema, unknown>;
-  for (const [k, schema] of Object.entries(guard)) {
-    if (k === "json") {
-      const validContentType = !![...request.raw.headers]
-        .find(
-          ([k, v]) =>
-            k.toLowerCase().startsWith("content-type") &&
-            v.toLowerCase().startsWith("application/json"),
-        )?.[1]
-        ?.toLowerCase() ?? "";
-      if (!validContentType) {
-        return new Error("unsupported content type");
+  guard: V,
+): Promise<InferValidators<V> | Error> {
+  const value = {} as InferValidators<V>;
+  const cType = request.header("content-type");
+  for (
+    const [key, schema] of Object.entries(guard) as Array<
+      [keyof ValidationSchema, z.ZodTypeAny]
+    >
+  ) {
+    if (key === "json") {
+      if (!cType || /^application\/([a-z-\.]+\+)?json/.test(cType)) {
+        throw new HTTPError(400, {
+          message: `Invalid http header, content type: ${String(cType)}`,
+        });
       }
-      const bodyResult = z
-        .string()
-        .transform(parseJSONString)
-        .pipe(schema)
-        .safeParse(await request.text());
-      if (bodyResult.success) {
-        result.json = bodyResult.data;
-      } else return bodyResult.error;
+      try {
+        const data = await request.json() as any;
+        const result = schema.safeParse(data);
+        if (result.success) {
+          value[key] = result.data;
+        } else {throw new HTTPError(400, {
+            message: result.error?.message,
+          });}
+      } catch (error) {
+        if (error instanceof Error) throw error;
+        throw new HTTPError(400, {
+          message: "malformed JSON in request body",
+        });
+      }
     }
-    if (k === "query") {
-      const queryResult = schema.safeParse(
-        Object.fromEntries(new URL(request.url).searchParams),
-      );
-      if (queryResult.success) result.query = queryResult.data;
-      else return queryResult.error;
+    if (key === "query") {
+      const data = [...new URLSearchParams(new URL(request.url).search)].reduce(
+        (acc, [k, v]) => {
+          if (k in acc) {
+            const temp = acc[k];
+            if (Array.isArray(temp)) temp.push(v);
+            else acc[k] = [temp, v];
+            return acc;
+          }
+          acc[k] = v;
+          return acc;
+        },
+        {} as Record<string, string | Array<string>>,
+      ) as any;
+
+      const result = schema.safeParse(data);
+      if (result.success) {
+        value[key] = result.data;
+      } else throw new HTTPError(400, { message: result.error?.message });
+    }
+    if (key === "headers") {
+      const data = Object.fromEntries(request.raw.headers) as any;
+      const result = schema.safeParse(data);
+      if (result.success) {
+        value[key] = data;
+      } else throw new HTTPError(400, { message: result.error?.message });
+    }
+    if (key === "cookie") {
+      const cookie = request.raw.headers.get("Cookie");
+      if (!cookie) {
+        throw new HTTPError(400, {
+          message: "Invalid headers, cookie not set",
+        });
+      }
+      const data = parse(cookie) as any;
+      const result = schema.safeParse(data);
+      if (result.success) {
+        value[key] = result.data;
+      } else throw new HTTPError(400, { message: result.error?.message });
     }
   }
-  return result;
+  return value;
 }
 
 function mergeSchema(
@@ -345,10 +407,3 @@ function mergeSchema(
   }
   return acc;
 }
-
-
-const router = new Router()
-  // .get('/other',(c) => new Response('hello world'))
-  .post("/post", (c) => c.json({hello:'world'},{status:201}), {
-    json: z.object({ uuid: z.string() }),
-  });

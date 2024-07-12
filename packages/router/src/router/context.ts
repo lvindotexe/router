@@ -1,7 +1,6 @@
 import type {
 	InferValidators,
 	Init,
-	Prettify,
 	TypedResponse,
 	ValidationSchema,
 } from "../types";
@@ -14,36 +13,31 @@ type ValidRedirectStatus = 301 | 302 | 303 | 307 | 308;
 
 export type Context<
 	D extends Record<string, unknown> = Record<string, unknown>,
-	P extends string = string,
-	V extends Partial<ValidationSchema> = {},
-> = _Context<P> & D & Prettify<InferValidators<V>>;
+	V extends ValidationSchema = ValidationSchema,
+> = _Context<V> & D;
 
-type ContextOptions = {
-	router: Router;
-	notfoundHandler: () => Response;
+type ContextOptions<V extends ValidationSchema> = {
+	router?: Router;
+	validationCache:InferValidators<V>
 };
 
-export class _Context<
-	P extends string = string,
-	V extends Partial<ValidationSchema> = {},
-> {
+export class _Context<V extends ValidationSchema> {
 	#headers: Headers;
-	#router: Router | undefined;
 	notFound: () => Response;
 	cookies: Cookies;
 	req: RouterRequest;
+	#options: ContextOptions<V> | undefined;
 
-	constructor(req: Request, options?: ContextOptions) {
-		this.req = new RouterRequest(req);
-		if (options?.router) this.#router = options.router;
+	constructor(req: Request | RouterRequest, options?: ContextOptions<V>) {
+		this.req = req instanceof RouterRequest ? req : new RouterRequest(req);
+		this.#options = options
 		this.cookies = new Cookies();
 		this.#headers = new Headers();
-		this.notFound = options?.notfoundHandler ??
-			(() =>
-				this.respond("404 route not found", {
-					status: 404,
-					headers: this.#headers,
-				}));
+		this.notFound = () =>
+			this.respond("404 route not found", {
+				status: 404,
+				headers: this.#headers,
+			});
 	}
 
 	respond<TConent extends string | null, TInit extends Init>(
@@ -67,6 +61,20 @@ export class _Context<
 		}) as any;
 	}
 
+	notfound(): Response & TypedResponse<"Not found", { status: 404 }, "text"> {
+		return this.respond("Not found", { status: 404 }) as any;
+	}
+
+    valid<K extends keyof V>(key: K):NonNullable<InferValidators<V>[K]> {
+        const data = this.#options?.validationCache?.[key];
+        if (!data) {
+            throw new Error(
+                `${String(key)} is not present in the validation cache`,
+            );
+        }
+        return data;
+    }
+
 	redirect(location: string, status: ValidRedirectStatus = 302): Response {
 		return this.respond(null, {
 			status,
@@ -77,13 +85,13 @@ export class _Context<
 	}
 
 	rewrite(location: string) {
-		if (!this.#router) {
+		if (this.#options?.router) {
 			throw new Error(
 				"unable to rewrite the rerquest, no router has been attatched to the requestContext",
 			);
 		}
 		//@ts-expect-error
-		return this.#router.handle(this as Context<any>, () => {});
+		return this.#options.router.handle(this as Context<any>, () => {});
 	}
 
 	text<TText extends string, TInit extends Init>(
@@ -119,22 +127,9 @@ export class _Context<
 		value: string | undefined,
 		options?: { append: boolean },
 	): void {
+		//TODO if cookie do this better
 		if (!value) return this.#headers.delete(key);
 		if (options?.append) return this.#headers.append(key, value);
 		return this.#headers.set(key, value);
 	}
 }
-
-const text = new _Context(new Request("http://www.google.com")).text(
-	"helo world",
-	{
-		status: 200,
-		headers: {
-			"X-custom": "world",
-		},
-	},
-);
-
-const json = new _Context(new Request("http://www.google.com")).json({
-	message: { hello: "world" },
-}, { status: 201 });

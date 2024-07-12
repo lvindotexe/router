@@ -1,6 +1,8 @@
 import z from "zod";
-import {expect,test,describe} from 'vitest'
-import { Router } from "../src/router/index.ts";
+import { describe, expect, test } from "vitest";
+import { Router } from "../src/router";
+import { _Context } from "../src/router/context";
+import { Handler } from "../src/types";
 
 test("GET Request", async () => {
 	const app = new Router()
@@ -23,7 +25,7 @@ test("GET Request", async () => {
 	let res = await app.request("hello");
 	expect(res.status).toBe(200);
 	expect(res.statusText).toBe("Router is OK");
-	expect(await res.text()).toBe('hello');
+	expect(await res.text()).toBe("hello");
 
 	res = await app.request("httphello");
 	expect(res.status).toBe(404);
@@ -63,10 +65,13 @@ test("Customization", async () => {
 });
 
 test("Reinitialize Values Per Request", async () => {
-	const app = new Router().state({ hello: () => new Map() }).get("/", (ctx) => {
-		ctx.hello.set(crypto.randomUUID(), "value");
-		return new Response(`${ctx.hello.size}`);
-	});
+	const app = new Router().state({ hello: () => new Map() }).get(
+		"/",
+		(ctx) => {
+			ctx.hello.set(crypto.randomUUID(), "value");
+			return new Response(`${ctx.hello.size}`);
+		},
+	);
 
 	let count = 0;
 	while (count < 10) {
@@ -93,9 +98,10 @@ test("Derive State from State and Decorators", async () => {
 	expect(res.status).toBe(200);
 	expect(key).toBe("hello");
 	expect(
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-			uuid,
-		),
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+			.test(
+				uuid,
+			),
 	).toBe(true);
 	expect(world).toBe("world");
 });
@@ -174,7 +180,9 @@ test("Nested Route", async () => {
 	expect(res.status).toBe(200);
 	expect(await res.text()).toBe("logged in");
 
-	res = await app.request("http://localhost/user/register", { method: "POST" });
+	res = await app.request("http://localhost/user/register", {
+		method: "POST",
+	});
 	expect(res.status).toBe(200);
 	expect(await res.text()).toBe("registered");
 
@@ -243,31 +251,23 @@ test("Chaining Middleware", async () => {
 
 test.only("Guard Validation", async () => {
 	let counter = 0;
-	const app = await new Router()
-		.guard({ json: z.object({ msisdn: z.string() }) })
-		.post("/", ({ json }) => {
-			return new Response(`msisdn: ${json.msisdn} sent`, { status: 200 });
-		})
-		.post(
-			"/other",
-			(_, next) => {
-				counter++;
-				return next();
-			},
-			(_, next) => {
-				counter++;
-				return next();
-			},
-			({ json }) => new Response(`msisdn: ${(json.msisdn)} ${json.name}`),
-			{ json: z.object({ name: z.string() }) },
-		);
 
+	const iterate:Handler = (_,next) => {
+		counter++
+		return next()
+	} 
+
+	const pain = new Router()
+		.guard({json:z.object({hello:z.string()})})
+		.post('/',(c) => c.json(c.valid('json')))
+		.post('/other',(c) => c.json(c.valid('json')),{json:z.object({name:z.string()})})
 	let res = await app.request("/", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ msisdn: "1234567890" }),
 	});
 	let text = await res.text();
+	console.log({ text });
 	expect(res.status).toBe(200);
 	expect(text).toBe("msisdn: 1234567890 sent");
 
@@ -287,9 +287,12 @@ test("Composable Guards", async () => {
 		.guard({ json: z.object({ msisdn: z.string() }) })
 		.guard({ json: z.object({ country: z.string() }) })
 		.post("/", ({ json }) => {
-			return new Response(`msisdn: ${json.msisdn} sent from ${json.country}`, {
-				status: 200,
-			});
+			return new Response(
+				`msisdn: ${json.msisdn} sent from ${json.country}`,
+				{
+					status: 200,
+				},
+			);
 		})
 		.request("/", {
 			method: "POST",
@@ -326,3 +329,12 @@ test("Isolated Guards", async () => {
 	});
 	expect(await res.text()).toBe("hello moto");
 });
+
+const schema = {
+	json: z.object({ hello: z.string() }),
+};
+const app = new Router()
+	.guard({json: z.object({ hello: z.string()})})
+	.get("/", (c) => c.text(c.valid("json").hello),{json:z.object({other:z.string()})});
+const ctx = new _Context<typeof schema>(new Request("/"));
+const pain = ctx.text(ctx.valid("json").hello);
