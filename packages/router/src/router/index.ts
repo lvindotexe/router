@@ -5,6 +5,8 @@ import {
   Handler,
   HandlerInterface,
   InferValidators,
+  MergePath,
+  MergeSchemaPath,
   Methods,
   Next,
   Prettify,
@@ -25,16 +27,12 @@ function notFoundHandler(): Response {
   return new Response("404 not found", { status: 404 });
   "request";
 }
-const schema = z.object({ hello: z.string() });
-const pain: HandlerInterface = (path, ...handlers) => {
-  return undefined as any;
-};
 
 export class Router<
   D extends Record<string, unknown> = {},
   S extends Schema = {},
-  P extends string = "/",
-  V extends ValidationSchema = ValidationSchema,
+  BasePath extends string = "/",
+  V extends ValidationSchema = {},
 > {
   #root: Node;
   #schema: ValidationSchema;
@@ -59,7 +57,7 @@ export class Router<
 
   #insert(
     path: string,
-    schema: Partial<ValidationSchema> | undefined,
+    schema: ValidationSchema | undefined,
     arg: Methods | Node,
     ...handlers: Array<Handler>
   ): void {
@@ -143,8 +141,8 @@ export class Router<
     }
   }
 
-  #clone(): Router<D, S, P, V> {
-    const router = new Router<D, S, P, V>();
+  #clone(): Router<D, S, BasePath, V> {
+    const router = new Router<D, S, BasePath, V>();
 
     router.#schema = { ...this.#schema };
     router.#initialisers = [...this.#initialisers];
@@ -154,10 +152,31 @@ export class Router<
     return router;
   }
 
+  register<
+    TSubPath extends string,
+    TSubD extends Record<string, unknown>,
+    TSubBasePath extends string,
+    TSubSchema extends Schema,
+    TSubVal extends ValidationSchema
+  >(
+    path: TSubPath,
+    app: (app: Router<D, S, TSubPath, V>) => Router<TSubD,TSubSchema,TSubBasePath,TSubVal>,
+  ): Router<D, MergeSchemaPath<TSubSchema,MergePath<BasePath,TSubPath>> & S, BasePath, V> {
+    const clone = app(this.#clone());
+    for (const { node, path: nodePath } of clone.#root) {
+      this.#insert(
+        `${path}/${nodePath}`.replaceAll(/\/+/g, "/"),
+        undefined,
+        node,
+      );
+    }
+    return this;
+  }
+
   decorate<const K extends string, V>(
     key: K,
     value: V,
-  ): Router<Prettify<D & { [P in K]: V }>, S, P>;
+  ): Router<Prettify<D & { [P in K]: V }>, S, BasePath>;
   decorate<T extends Record<string, unknown>>(
     decorators: T,
   ): Router<Prettify<D & T>>;
@@ -168,7 +187,7 @@ export class Router<
   >(
     arg: K | T,
     value?: V,
-  ): Router<Prettify<D & (T | { [P in K]: P })>, S, P> {
+  ): Router<Prettify<D & (T | { [P in K]: P })>, S, BasePath> {
     if (typeof arg === "object") {
       for (const [k, v] of Object.entries(arg)) {
         //@ts-expect-error
@@ -216,9 +235,9 @@ export class Router<
     return this as any;
   }
 
-  guard<T extends Partial<ValidationSchema>>(
+  guard<T extends ValidationSchema>(
     schema: T,
-  ): Router<D, S, P, T & V> {
+  ): Router<D, S, BasePath, T & V> {
     for (
       const [k, s] of Object.entries(schema) as Array<
         [keyof ValidationSchema, z.ZodTypeAny]
@@ -240,40 +259,16 @@ export class Router<
     const path = /^https?:\/\//.test(input)
       ? input
       : `http://localhost/${input.split("/").filter(Boolean).join("/")}`;
-    return this.#dispatch(new Request(path, requesstInit));
+    const req = new Request(path, requesstInit);
+    return this.#dispatch(req);
   }
 
-  register<P extends string>(
-    path: P,
-    app: (app: Router<D, S, P, V>) => Router<D, S, P, V>,
-  ): Router<D, S, P, V>;
-  register(path: string, app: Router): Router<D, S, P, V>;
-  register<P extends string>(
-    path: P,
-    arg: Router | ((app: Router<D, S, P, V>) => Router<D, S, P, V>),
-  ): Router<D, S, P, V> {
-    const clone = arg instanceof Router ? arg : arg(this.#clone());
-    for (const { node, path: nodePath } of clone.#root) {
-      this.#insert(
-        `${path}/${nodePath}`.replaceAll(/\/+/g, "/"),
-        undefined,
-        node,
-      );
-    }
-    return this;
-  }
-
-  use(...handlers: Array<Handler<D>>): Router<D, S, P, V> {
+  use(...handlers: Array<Handler<D>>): Router<D, S, BasePath, V> {
     this.#middleware.push(...handlers);
     return this;
   }
 
-  get: HandlerInterface<D, "get", S, P, V> = <
-    P extends string,
-    R extends HandlerResponse<any> = any,
-    D2 extends Record<string, unknown> = D,
-    V2 extends ValidationSchema = ValidationSchema,
-  >(path, ...arg) => {
+  get: HandlerInterface<D, "get", S, BasePath, V> = (path, ...arg) => {
     const last = arg.pop()!;
     if (typeof last === "object") {
       this.#insert(
@@ -294,7 +289,7 @@ export class Router<
     return this as any;
   };
 
-  post: HandlerInterface<D, "post", S, P, V> = (path, ...arg) => {
+  post: HandlerInterface<D, "post", S, BasePath, V> = (path, ...arg) => {
     const last = arg.pop()!;
     if (typeof last === "object") {
       this.#insert(
@@ -328,7 +323,7 @@ async function validateRequest<V extends ValidationSchema>(
     >
   ) {
     if (key === "json") {
-      if (!cType || /^application\/([a-z-\.]+\+)?json/.test(cType)) {
+        if (!cType || !/application\/json\s*(;.*)?/i.test(cType)) {
         throw new HTTPError(400, {
           message: `Invalid http header, content type: ${String(cType)}`,
         });
@@ -393,9 +388,9 @@ async function validateRequest<V extends ValidationSchema>(
 }
 
 function mergeSchema(
-  ...schemas: Array<Partial<ValidationSchema>>
-): Partial<ValidationSchema> {
-  const acc: Partial<ValidationSchema> = {};
+  ...schemas: Array<ValidationSchema>
+): ValidationSchema {
+  const acc: ValidationSchema = {};
   for (const schema of schemas) {
     for (
       const [k, s] of Object.entries(schema) as Array<

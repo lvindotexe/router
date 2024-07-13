@@ -126,7 +126,7 @@ class ClientRequest {
 	}
 }
 
-export function rc<R extends Router<any, any, any>>(
+export function rc<R extends Router<any, any, any,any>>(
 	baseurl: string,
 	options?: RouterClientOptions,
 ) {

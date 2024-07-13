@@ -44,7 +44,7 @@ export type InferValidators<T extends Record<string, z.ZodTypeAny>> = {
 
 export type Handler<
 	D extends Record<string, unknown> = any,
-	V extends Partial<ValidationSchema> = any,
+	V extends ValidationSchema = any,
 	R extends HandlerResponse<any> = any,
 > = (
 	context: Context<D, V>,
@@ -60,6 +60,8 @@ export type Init<
 	status?: TStatusCode;
 	statusText?: TStatusText;
 };
+
+
 
 export type TypedResponse<
 	TData = unknown,
@@ -79,21 +81,38 @@ type AddDollar<T extends string> = `$${Lowercase<T>}`;
 export type IsAny<T> = boolean extends (T extends never ? true : false) ? true
 	: false;
 
-export type Input<V extends Partial<ValidationSchema>> = {
-	in: Prettify<InferValidators<V>>;
-	out: {};
-	outputFormat: ResponseFormat;
-};
+export type RemoveBlankRecord<T> = T extends Record<infer K, unknown>
+  ? K extends string
+    ? T
+    : never
+  : never
 
-export type ExtractInput<I extends Input<any> | Input<any>["in"]> = I extends
-	Input<any> ? unknown extends I["in"] ? {}
-	: I["in"]
-	: I;
+export type MergeSchemaPath<OrigSchema extends Schema, SubPath extends string> = Prettify<{
+  [P in keyof OrigSchema as MergePath<SubPath, P & string>]: {
+    [M in keyof OrigSchema[P]]: OrigSchema[P][M]
+  }
+}>
+
+export type MergePath<A extends string, B extends string> = B extends ''
+  ? MergePath<A, '/'>
+  : A extends ''
+  ? B
+  : A extends '/'
+  ? B
+  : A extends `${infer P}/`
+  ? B extends `/${infer Q}`
+    ? `${P}/${Q}`
+    : `${P}/${B}`
+  : B extends `/${infer Q}`
+  ? Q extends ''
+    ? A
+    : `${A}/${Q}`
+  : `${A}/${B}`
 
 export type ToSchema<
 	M extends Methods,
 	P extends string,
-	V extends Partial<ValidationSchema>,
+	V extends ValidationSchema,
 	R,
 > = Prettify<
 	{
@@ -142,7 +161,7 @@ export type Schema = {
 };
 
 export type Endpoint = {
-	input: InferValidators<Partial<ValidationSchema>>;
+	input: InferValidators<ValidationSchema>;
 	data: any;
 	format: ResponseFormat;
 	status: StatusCode;
@@ -157,57 +176,84 @@ type IntersectNonAnyTypes<T extends any[]> = T extends
 	: {};
 
 export interface HandlerInterface<
-  D extends Record<string, unknown> = {},
-  M extends Methods = Methods,
-  S extends Schema = {},
-  BasePath extends string = "/",
-  V extends ValidationSchema = ValidationSchema,
+	D extends Record<string, unknown> = {},
+	M extends Methods = Methods,
+	S extends Schema = {},
+	BasePath extends string = "/",
+	V extends ValidationSchema = {},
 > {
-  // Overload with no additional validation schema (V2)
-  <
-    P extends string,
-    R extends HandlerResponse<any> = any,
-    D2 extends Record<string, unknown> = D,
-  >(
-    path: P,
-    ...handlers: [...Array<Handler<D & D2, V, R>>, Handler<D & D2, V, R>]
-  ): Router<
-    IntersectNonAnyTypes<[D, D2]>,
-    Prettify<S & ToSchema<M, P, V, R>>,
-    BasePath
-  >;
+	<
+		P extends string,
+		R extends HandlerResponse<any> = any,
+		D2 extends Record<string, unknown> = D,
+		V2 extends ValidationSchema = {},
+	>(
+		path: P,
+		...handlers: [
+			...Array<Handler<IntersectNonAnyTypes<[D, D2]>, V, R>>,
+			Handler<IntersectNonAnyTypes<[D & D2]>, V, R>,
+		]
+	): Router<
+		IntersectNonAnyTypes<[D, D2]>,
+		Prettify<S & ToSchema<M, P, V, R>>,
+		BasePath,
+		V
+	>;
 
-  // Overload with an additional validation schema (V2)
-  <
-    P extends string,
-    R extends HandlerResponse<any> = any,
-    D2 extends Record<string, unknown> = D,
-    V2 extends ValidationSchema = ValidationSchema
-  >(
-    path: P,
-    ...handlers: [...Array<Handler<D2 & D, IntersectNonAnyTypes<[V, V2]>, R>>, V2]
-  ): Router<
-    IntersectNonAnyTypes<[D, D2]>,
-    Prettify<S & ToSchema<M, P, IntersectNonAnyTypes<[V,V2]>, R>>,
-    BasePath,
-    IntersectNonAnyTypes<[V, V2]>
-  >;
+	<
+		P extends string,
+		R extends HandlerResponse<any> = any,
+		D2 extends Record<string, unknown> = D,
+		V2 extends ValidationSchema = {},
+	>(
+		path: P,
+		...handlers: [
+			...Array<
+				Handler<
+					IntersectNonAnyTypes<[D, D2]>,
+					IntersectNonAnyTypes<[V, V2]>,
+					R
+				>
+			>,
+			V2,
+		]
+	): Router<
+		IntersectNonAnyTypes<[D, D2]>,
+		Prettify<S & ToSchema<M, P, IntersectNonAnyTypes<[V, V2]>, R>>,
+		BasePath,
+		IntersectNonAnyTypes<[V, V2]>
+	>;
 
-  // Generalized overload combining both cases
-  <
-    P extends string,
-    R extends HandlerResponse<any> = any,
-    D2 extends Record<string, unknown> = D,
-    V2 extends ValidationSchema = ValidationSchema
-  >(
-    path: P,
-    ...handlers:
-      | [...Array<Handler<D2 & D, V, R>>, Handler<D, V>]
-      | [...Array<Handler<D2 & D, IntersectNonAnyTypes<[V,V2]>, R>>, V2]
-  ): Router<
-    IntersectNonAnyTypes<[D, D2]>,
-    Prettify<S & ToSchema<M, P, V, R>>,
-    BasePath,
-    IntersectNonAnyTypes<[V, V2]>
-  >;
+	<
+		P extends string,
+		R extends HandlerResponse<any> = any,
+		D2 extends Record<string, unknown> = D,
+		V2 extends ValidationSchema = {},
+	>(
+		path: P,
+		...handlers:
+			| [
+				...Array<Handler<IntersectNonAnyTypes<[D2, D]>, V, R>>,
+				Handler<D, V>,
+			]
+			| [
+				...Array<
+					Handler<
+						IntersectNonAnyTypes<[D, D2]>,
+						IntersectNonAnyTypes<[V, V2]>,
+						R
+					>
+				>,
+				V2,
+			]
+	): Router<
+		IntersectNonAnyTypes<[D, D2]>,
+		Prettify<S & ToSchema<M, P, V, R>>,
+		BasePath,
+		IntersectNonAnyTypes<[V, V2]>
+	>;
 }
+
+
+const schema =z.object({hello:z.string()})
+type pain = IntersectNonAnyTypes<[{},typeof schema]>

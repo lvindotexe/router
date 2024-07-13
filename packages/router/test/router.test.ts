@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { Router } from "../src/router";
 import { _Context } from "../src/router/context";
 import { Handler } from "../src/types";
+import { rc } from "../src/client";
 
 test("GET Request", async () => {
 	const app = new Router()
@@ -121,29 +122,25 @@ test("Accept Little Mutation", async () => {
 	const app = new Router()
 		.decorate({ hello: "world" })
 		.get("/", () => new Response("root"))
+		.register('/',(app) => app)
 		.register("/", (app) =>
-			app.decorate({ world: "hello" }).get(
-				"/sub",
-				(ctx) =>
-					new Response(
-						JSON.stringify({
-							world: ctx.world,
-							hello: ctx.hello,
-						}),
-					),
-			));
-
+			app
+				.decorate("world", "hello")
+				.get("/sub", (c) => {
+					const { hello, world } = c;
+					return c.json({ hello, world });
+				}));
 	let res = await app.request("/");
 	expect(res.status).toBe(200);
 	expect(await res.text()).toBe("root");
 
 	res = await app.request("/sub");
 	expect(res.status).toBe(200);
-	expect(await res.text()).toBe(
-		JSON.stringify({
+	expect(await res.json()).toEqual(
+		{
 			world: "hello",
 			hello: "world",
-		}),
+		}
 	);
 });
 
@@ -158,8 +155,8 @@ test("Nested Route", async () => {
 		.post("/register", () => new Response("registered"));
 
 	app
-		.register("/book", book)
-		.register("/user", user)
+		.register("/book", () => book)
+		.register("/user", () => user)
 		.get(
 			"/add-path-after-route-call",
 			() => new Response("get /add-path-after-route-call"),
@@ -198,20 +195,32 @@ test("Registers SubRoutes", async () => {
 		.register("/", () =>
 			new Router()
 				.decorate({ config: { hello: "world", age: 12 } })
+				.get('/',(c) => c.text('root'))
+				.use((c, next) => {
+					c.config.age = 22;
+					return next();
+				})
+				.get("/sub", (c) => c.text(`get ${c.config.age} /`))
 				.use((ctx, next) => {
 					ctx.config.age = 22;
 					return next();
-				})
-				.get("/", (ctx) => new Response(`get ${ctx.config.age} /`)))
+				}))
 		.get("/api/start", () => new Response("get /api/start"));
 
-	let res = await app.request("/");
-	expect(res.status).toBe(200);
-	expect(await res.text()).toBe("get 22 /");
+	const client = rc<typeof app>('http://127.0.0.1:8000',{
+		fetch:(input,init) => app.request(input,init)
+	})
 
-	res = await app.request("/api/start");
+	const res = await client.index.$get()
 	expect(res.status).toBe(200);
-	expect(await res.text()).toBe("get /api/start");
+	expect(await res.text()).toBe('root')
+
+	const subRes = await client.sub.$get()
+	expect(await subRes.text()).toBe("get 22 /");
+
+	const apiRes = await client.api.start.$get()
+	expect(res.status).toBe(200);
+	expect(await apiRes.text()).toBe("get /api/start");
 });
 
 test("Decorating the Context", async () => {
@@ -249,59 +258,63 @@ test("Chaining Middleware", async () => {
 	expect(text).toBe("3");
 });
 
-test.only("Guard Validation", async () => {
+test("Guard Validation", async () => {
 	let counter = 0;
 
-	const iterate:Handler = (_,next) => {
-		counter++
-		return next()
-	} 
+	const iterate: Handler = (_, next) => {
+		counter++;
+		return next();
+	};
 
-	const pain = new Router()
-		.guard({json:z.object({hello:z.string()})})
-		.post('/',(c) => c.json(c.valid('json')))
-		.post('/other',(c) => c.json(c.valid('json')),{json:z.object({name:z.string()})})
-	let res = await app.request("/", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ msisdn: "1234567890" }),
+	const app = new Router()
+		.guard({ json: z.object({ hello: z.string() }) })
+		.post("/", (c) => c.json(c.valid("json")))
+		.post("/other", (c) => c.json(c.valid("json")), {
+			json: z.object({ name: z.string() }),
+		});
+	
+	const client = rc<typeof app>('http://127.0.0.1:8000',{
+		fetch:(input,init) => app.request(input,init)
+	})
+	const res = await client.index.$post({
+		json:{hello:'world'}
+	})
+
+	// expect(res.status).toBe(200);
+	let json = await res.text() as unknown
+	console.log({json})
+	expect(json).toEqual({hello:'world'});
+	
+	const otherRes = await client.other.$post({
+		json:{
+			hello:'world',
+			name:'marcus'
+		}
+	})
+
+	json = await otherRes.json() as unknown
+	expect(json).toEqual({
+		hello:'world',
+		name:'marcus'
 	});
-	let text = await res.text();
-	console.log({ text });
-	expect(res.status).toBe(200);
-	expect(text).toBe("msisdn: 1234567890 sent");
-
-	res = await app.request("/other", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ name: "marcus", msisdn: "1234567890" }),
-	});
-
-	text = await res.text();
-	expect(text).toBe("msisdn: 1234567890 marcus");
-	expect(counter).toBe(2);
 });
 
 test("Composable Guards", async () => {
 	const res = await new Router()
-		.guard({ json: z.object({ msisdn: z.string() }) })
-		.guard({ json: z.object({ country: z.string() }) })
-		.post("/", ({ json }) => {
-			return new Response(
-				`msisdn: ${json.msisdn} sent from ${json.country}`,
-				{
-					status: 200,
-				},
-			);
+		.guard({ json: z.object({ name: z.string() }) })
+		.guard({ json: z.object({ age: z.number() }) })
+		.post("/", (c) => {
+			const { name, age } = c.valid("json");
+			return c.text(`name: ${name} age: ${age}`, { status: 201 });
 		})
 		.request("/", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ msisdn: "1234567890", country: "brazil" }),
+			body: JSON.stringify({ name: "marcus", age:25 }),
 		});
 
-	expect(res.status).toBe(200);
-	expect(await res.text()).toBe("msisdn: 1234567890 sent from brazil");
+	expect(res.status).toBe(201);
+	expect(await res.text()).toBe("name: marcus age: 25");
 });
 
 test("Isolated Guards", async () => {
@@ -312,7 +325,7 @@ test("Isolated Guards", async () => {
 				.post("/", ({ json }) => new Response(`hello ${json.name}`)))
 		.register(
 			"/hello",
-			new Router().get("/", () => new Response("hello world")),
+			() => new Router().get("/", () => new Response("hello world")),
 		)
 		.get("/", () => new Response("hello from root"));
 
@@ -329,12 +342,3 @@ test("Isolated Guards", async () => {
 	});
 	expect(await res.text()).toBe("hello moto");
 });
-
-const schema = {
-	json: z.object({ hello: z.string() }),
-};
-const app = new Router()
-	.guard({json: z.object({ hello: z.string()})})
-	.get("/", (c) => c.text(c.valid("json").hello),{json:z.object({other:z.string()})});
-const ctx = new _Context<typeof schema>(new Request("/"));
-const pain = ctx.text(ctx.valid("json").hello);

@@ -96,7 +96,7 @@ type PathToChain<
     >;
   };
 
-export type Client<T> = T extends Router<any, infer S, any>
+export type Client<T> = T extends Router<any, infer S, any,any>
   ? S extends Record<infer K, Schema> ? K extends string ? PathToChain<K, S>
     : never
   : never
