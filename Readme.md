@@ -67,12 +67,12 @@ const app = new Router()
 information based on request info can be used to decorate the context 
 ```typescript
     const app = new Router()
-        .state('test',(ctx) => {
+        .state('bearer',(ctx) => {
             const auth = ctx.headers('authorization')
             return auth.startsWith("Beaerer") ? auth.slice(7) : null
         })
         .get("/",(c) => {
-            c.logger("hello world")
-            return c.text("logged")
+            const {bearer} = c
+            return c.text(bearer)
         })
 ```
