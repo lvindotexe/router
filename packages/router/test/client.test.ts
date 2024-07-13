@@ -64,13 +64,35 @@ describe("Basic - JSON", () => {
     });
 
     it("Should get 404 response", async () => {
-        const req = client["hello-not-found"].$req("get", {});
+        const req = client["hello-not-found"].$req("get", {
+            cookie: {
+                debug: "false",
+            },
+            headers: {
+                "x-message": "string",
+            },
+            json: {
+                id: 12,
+                title: "title",
+            },
+        });
         expect((await route.request(req)).status).toBe(404);
     });
 
     it("Should get a `null` content", async () => {
         const client = rc<AppType>("http://localhost");
-        const req = client.null.$req("get", {});
+        const req = client.null.$req("get", {
+            cookie: {
+                debug: "true",
+            },
+            headers: {
+                "x-message": "12",
+            },
+            json: {
+                id: 12,
+                title: "other title",
+            },
+        });
         const res = await route.request(req);
         const data = await res.json();
         expectTypeOf(data).toMatchTypeOf<unknown>();
@@ -222,6 +244,13 @@ describe("Basic - query, queries, form, path params, header and cookie", () => {
         };
         const res = await client.header.$get({
             headers,
+            form: {
+                title: "title",
+            },
+            query: {
+                q: "tag",
+                tag: ["hello", "world"],
+            },
         });
 
         expect(res.status).toBe(200);
@@ -234,10 +263,20 @@ describe("Basic - query, queries, form, path params, header and cookie", () => {
         };
         const res = await client.cookie.$get({
             cookie,
+            form: {
+                title: "string",
+            },
+            headers: {
+                "x-message-id": "hello",
+            },
+            query: {
+                tag: ["hello"],
+                q: "query",
+            },
         });
 
         expect(res.status).toBe(200);
-        const data = await res.json()
+        const data = await res.json();
         expect(data).toEqual(cookie);
     });
 });
