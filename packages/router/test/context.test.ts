@@ -4,7 +4,7 @@ import { _Context } from '../src/router/context'
 describe('Context', () => {
   const req = new Request('http://localhost/')
 
-  let c: _Context
+  let c: _Context<any>
   beforeEach(() => {
     c = new _Context(req)
   })

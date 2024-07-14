@@ -134,11 +134,11 @@ export class RouterRequest {
         return result;
     }
 
-    get url() {
+    get url():string {
         return this.raw.url;
     }
 
-    get method() {
+    get method():string {
         return this.raw.method;
     }
 

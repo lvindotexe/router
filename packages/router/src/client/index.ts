@@ -129,7 +129,7 @@ class ClientRequest {
 export function rc<R extends Router<any, any, any,any>>(
 	baseurl: string,
 	options?: RouterClientOptions,
-) {
+):UnionToIntersection<Client<R>> {
 	return createRecursiveProxy((opts) => {
 		const parts = [...opts.path];
 		let method = "";
@@ -159,7 +159,7 @@ export function rc<R extends Router<any, any, any,any>>(
 			});
 			return req.fetch(opts.args[0], args);
 		}
-	}, []) as UnionToIntersection<Client<R>>;
+	}, []) as any;
 }
 
 const mergePath = (base: string, path: string) => {

@@ -6,11 +6,8 @@ const DELETED_VALUE = "deleted";
 
 export class RequestCookie {
 
-	#req:Request
 	#incoming:Record<string,string>
 	constructor(req:Request){
-		this.#req = req
-		const pain = parse('cookie')
 		this.#incoming = parse(req.headers.get('Cookie') ?? '')
 	}
 
@@ -29,20 +26,20 @@ export class Cookie {
 		this.value = value;
 	}
 
-	json() {
+	json():unknown {
 		if (!this.value) throw new Error("cannot convert undefined to an object");
 		else return JSON.parse(this.value);
 	}
 
-	number() {
+	number():number {
 		return Number(this.value);
 	}
 
-	boolean() {
+	boolean():boolean {
 		return typeof this.value === "boolean" ? this.value : Boolean(this.value);
 	}
 
-	toString(){
+	toString():string{
 		return this.value
 	}
 }

@@ -19,7 +19,7 @@ export class HTTPError extends Error {
 	}
 }
 
-export function errorHandler(err: Error) {
+export function errorHandler(err: Error):Response {
 	if (err instanceof HTTPError)return err.getResponse();
 	return new Response("Internal Server Error", { status: 500 });
 }

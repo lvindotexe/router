@@ -7,7 +7,7 @@ import type {
 import { RouterRequest } from "./request";
 import { Cookies } from "./cookies";
 import { JSONValue } from "../types/json";
-import { Router } from ".";
+import { Router } from "./index";
 
 type ValidRedirectStatus = 301 | 302 | 303 | 307 | 308;
 
@@ -84,14 +84,14 @@ export class _Context<V extends ValidationSchema> {
 		});
 	}
 
-	rewrite(location: string) {
+	rewrite(location: string):Promise<Response> {
 		if (this.#options?.router) {
 			throw new Error(
 				"unable to rewrite the rerquest, no router has been attatched to the requestContext",
 			);
 		}
 		//@ts-expect-error
-		return this.#options.router.handle(this as Context<any>, () => {});
+		return this.#options.router?.request(this as Context<any>, () => {});
 	}
 
 	text<TText extends string, TInit extends Init>(

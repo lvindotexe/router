@@ -18,6 +18,9 @@ import { RouterRequest } from "./request.js";
 import { errorHandler, HTTPError } from "./err.js";
 import { parse } from "cookie";
 
+export type{ Handler,ValidationSchema,Context}
+export {errorHandler,HTTPError}
+
 type RouterOptions = {
   basePath?: string;
   notFoundHandler: () => Response;
