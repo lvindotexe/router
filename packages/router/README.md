@@ -6,7 +6,11 @@ made an end-to-end typesafe router, since i wanted to understand how backend fra
 
 ### installation
 ```sh
-npm i @lvindotexe/router
+# Deno
+deno add @lvindotexe/router
+
+#Node
+npx jsr add i @lvindotexe/router
 ```
 
 ### runtime usage
