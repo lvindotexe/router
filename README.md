@@ -8,9 +8,6 @@ made an end-to-end typesafe router, since i wanted to understand how backend fra
 ```sh
 # Deno
 deno add @lvindotexe/router
-
-#Node
-npx jsr add i @lvindotexe/router
 ```
 
 ### runtime usage
@@ -18,14 +15,6 @@ npx jsr add i @lvindotexe/router
 # Deno
 const router = new Router().get("/" (c) => c.text("hello world"))
 Deno.serve((req) => router.request(req))
-
-# Node
-import {server} from '@lvindotexe/router/node'
-
-const router = new Router().get("/" (c) => c.text("hello world"))
-serve(app, (info) => {
-  console.log(`Listening on http://localhost:${info.port}`) // Listening on http://localhost:3000
-})
 ```
 
 #### request validation
